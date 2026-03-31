@@ -1,0 +1,290 @@
+{
+  "id": "claw-aegis",
+  "name": "Claw Aegis",
+  "description": "Minimal safety guard plugin for OpenClaw prompt, tool, and tool-result flows.",
+  "uiHints": {
+    "allDefensesEnabled": {
+      "label": "Enable All Defenses",
+      "help": "Master switch for every claw-aegis defense below."
+    },
+    "defaultBlockingMode": {
+      "label": "Default Blocking Mode",
+      "help": "Default mode for blocking defenses. \"enforce\" blocks, \"observe\" only logs, and \"off\" disables the guard."
+    },
+    "selfProtectionEnabled": {
+      "label": "Protect Sensitive Paths",
+      "help": "Block reads, writes, deletes, and searches that target protected paths, important skills, or try to delete files outside the current workspace."
+    },
+    "selfProtectionMode": {
+      "label": "Sensitive Path Mode",
+      "help": "Detailed mode for protected-path defenses. \"observe\" records violations without blocking."
+    },
+    "commandBlockEnabled": {
+      "label": "Block High-Risk Commands",
+      "help": "Block clear high-risk shell patterns such as rm -rf / and curl | sh."
+    },
+    "commandBlockMode": {
+      "label": "Command Block Mode",
+      "help": "Detailed mode for high-risk command blocking. \"observe\" only reports detections."
+    },
+    "encodingGuardEnabled": {
+      "label": "Guard Encoded Payloads",
+      "help": "Detect bounded base64/base32/hex/url-encoded payloads that hide risky commands or exfiltration logic."
+    },
+    "encodingGuardMode": {
+      "label": "Encoding Guard Mode",
+      "help": "Detailed mode for encoded/obfuscated command guards. \"observe\" keeps the call allowed."
+    },
+    "scriptProvenanceGuardEnabled": {
+      "label": "Track Script Provenance",
+      "help": "Track newly written scripts in the current run and block later execution when they carry risky command or exfiltration signals."
+    },
+    "scriptProvenanceGuardMode": {
+      "label": "Script Provenance Mode",
+      "help": "Detailed mode for risky script provenance enforcement. \"observe\" logs the execution attempt only."
+    },
+    "memoryGuardEnabled": {
+      "label": "Guard Memory Writes",
+      "help": "Reject suspicious or oversized writes to memory_store, MEMORY.md, SOUL.md, and memory/."
+    },
+    "memoryGuardMode": {
+      "label": "Memory Guard Mode",
+      "help": "Detailed mode for risky memory writes. \"observe\" will keep the write allowed."
+    },
+    "userRiskScanEnabled": {
+      "label": "Scan User Intent",
+      "help": "Detect jailbreak, secret-exfiltration, and plugin-tampering requests in message_received."
+    },
+    "skillScanEnabled": {
+      "label": "Scan Skills",
+      "help": "Enable the lightweight local skill scanner for ~/.openclaw/skills and ~/.openclaw/workspace/skills."
+    },
+    "toolResultScanEnabled": {
+      "label": "Scan Tool Results",
+      "help": "Scan toolResult content for prompt-injection, secret-request, and exfiltration patterns."
+    },
+    "outputRedactionEnabled": {
+      "label": "Redact Sensitive Output",
+      "help": "Mask API keys, tokens, and similar sensitive values before assistant output is sent or persisted."
+    },
+    "promptGuardEnabled": {
+      "label": "Inject Prompt Guards",
+      "help": "Inject static and one-shot safety reminders during before_prompt_build."
+    },
+    "loopGuardEnabled": {
+      "label": "Enable Loop Guard",
+      "help": "Stop repeated mutating tool calls after the allowed retry budget per run."
+    },
+    "loopGuardMode": {
+      "label": "Loop Guard Mode",
+      "help": "Detailed mode for repeated mutating calls. \"observe\" warns instead of stopping the run."
+    },
+    "exfiltrationGuardEnabled": {
+      "label": "Guard Exfiltration Chains",
+      "help": "Track prior tool calls per run and block suspicious outbound chains that resemble SSRF or secret exfiltration."
+    },
+    "exfiltrationGuardMode": {
+      "label": "Exfiltration Guard Mode",
+      "help": "Detailed mode for outbound chain detection. \"observe\" records the chain without blocking."
+    },
+    "protectedPaths": {
+      "label": "Protected Paths",
+      "help": "Additional absolute or resolved paths that should be treated as protected targets.",
+      "advanced": true,
+      "placeholder": "/path/to/protected"
+    },
+    "protectedSkills": {
+      "label": "Protected Skills",
+      "help": "Additional skill IDs to protect under ~/.openclaw/skills and ~/.openclaw/workspace/skills.",
+      "advanced": true,
+      "placeholder": "release-guard"
+    },
+    "protectedPlugins": {
+      "label": "Protected Plugins",
+      "help": "Additional plugin IDs to protect under extensions/, plugins/ state, and openclaw.json plugin entries.",
+      "advanced": true,
+      "placeholder": "audit-guard"
+    },
+    "startupSkillScan": {
+      "label": "Scan Skills at Startup",
+      "help": "Run a bounded startup scan for ~/.openclaw/skills and ~/.openclaw/workspace/skills.",
+      "advanced": true
+    },
+    "skillRoots": {
+      "label": "Additional Skill Roots (Ignored)",
+      "help": "Deprecated. claw-aegis v1 now scans only ~/.openclaw/skills and ~/.openclaw/workspace/skills.",
+      "advanced": true,
+      "placeholder": "/path/to/skills"
+    },
+    "extraProtectedRoots": {
+      "label": "Additional Protected Roots",
+      "help": "Legacy compatibility alias of protectedPaths. Extra directories that claw-aegis should treat as protected paths.",
+      "advanced": true,
+      "placeholder": "/path/to/protected"
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "allDefensesEnabled": {
+        "type": "boolean",
+        "default": true
+      },
+      "defaultBlockingMode": {
+        "type": "string",
+        "enum": [
+          "off",
+          "observe",
+          "enforce"
+        ],
+        "default": "enforce"
+      },
+      "selfProtectionEnabled": {
+        "type": "boolean",
+        "default": true
+      },
+      "selfProtectionMode": {
+        "type": "string",
+        "enum": [
+          "off",
+          "observe",
+          "enforce"
+        ],
+        "default": "enforce"
+      },
+      "commandBlockEnabled": {
+        "type": "boolean",
+        "default": true
+      },
+      "commandBlockMode": {
+        "type": "string",
+        "enum": [
+          "off",
+          "observe",
+          "enforce"
+        ],
+        "default": "enforce"
+      },
+      "encodingGuardEnabled": {
+        "type": "boolean",
+        "default": true
+      },
+      "encodingGuardMode": {
+        "type": "string",
+        "enum": [
+          "off",
+          "observe",
+          "enforce"
+        ],
+        "default": "enforce"
+      },
+      "scriptProvenanceGuardEnabled": {
+        "type": "boolean",
+        "default": true
+      },
+      "scriptProvenanceGuardMode": {
+        "type": "string",
+        "enum": [
+          "off",
+          "observe",
+          "enforce"
+        ],
+        "default": "enforce"
+      },
+      "memoryGuardEnabled": {
+        "type": "boolean",
+        "default": true
+      },
+      "memoryGuardMode": {
+        "type": "string",
+        "enum": [
+          "off",
+          "observe",
+          "enforce"
+        ],
+        "default": "enforce"
+      },
+      "userRiskScanEnabled": {
+        "type": "boolean",
+        "default": true
+      },
+      "skillScanEnabled": {
+        "type": "boolean",
+        "default": true
+      },
+      "toolResultScanEnabled": {
+        "type": "boolean",
+        "default": true
+      },
+      "outputRedactionEnabled": {
+        "type": "boolean",
+        "default": true
+      },
+      "promptGuardEnabled": {
+        "type": "boolean",
+        "default": true
+      },
+      "loopGuardEnabled": {
+        "type": "boolean",
+        "default": true
+      },
+      "loopGuardMode": {
+        "type": "string",
+        "enum": [
+          "off",
+          "observe",
+          "enforce"
+        ],
+        "default": "enforce"
+      },
+      "exfiltrationGuardEnabled": {
+        "type": "boolean",
+        "default": true
+      },
+      "exfiltrationGuardMode": {
+        "type": "string",
+        "enum": [
+          "off",
+          "observe",
+          "enforce"
+        ],
+        "default": "enforce"
+      },
+      "protectedPaths": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "protectedSkills": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "protectedPlugins": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "skillRoots": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "extraProtectedRoots": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "startupSkillScan": {
+        "type": "boolean",
+        "default": true
+      }
+    }
+  }
+}
