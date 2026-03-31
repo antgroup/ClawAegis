@@ -27,23 +27,9 @@ ClawAegis 为 OpenClaw 构建了一套多维度的纵深防御架构，实现从
 
 ---
 
-## ✨ 核心特性
-
-- **五层纵深防御** — 覆盖意图扫描、工具调用治理、工具结果审查、资产保护和输出安全，贯穿九个OpenClaw生命周期钩子。
-- **Skill投毒防御** — 启动时及运行期间持续扫描Skill内容，检测试图绕过审批、禁用安全控制或篡改受保护资产的恶意载荷。
-- **记忆污染防护** — 拒绝对持久化记忆存储（`memory_store`、`MEMORY.md`、`SOUL.md`、`memory/`）的可疑或超大写入，防止跨会话的持久化提示词投毒。
-- **意图与提示词安全** — 检测用户消息中的越狱尝试、密钥窃取请求和插件篡改意图，并向提示词注入安全上下文以影响后续模型推理。
-- **工具调用治理** — 在工具执行前拦截高危Shell命令、编码/混淆载荷、写后执行链、重复变异循环以及SSRF/数据泄露链。
-- **工具结果审查** — 将外部工具输出视为不可信输入，扫描其中的提示词注入、密钥请求和权限提升模式，防止其影响下一步推理。
-- **输出脱敏** — 在助手输出发送或存储前，遮蔽API密钥、令牌及类似敏感值。
-- **资产与自保护** — 保护敏感文件、高价值Skill、重要插件及自身安全配置，防止未授权访问和篡改。
-- **可配置策略** — 每项拦截防御均支持 `enforce`（强制拦截）/ `observe`（仅观察）/ `off`（关闭）三种模式，支持全局默认和逐项覆盖，实现从监控到主动拦截的渐进式部署。
-
----
-
 ## 🚀 快速开始
 
-**1.** 将本仓库添加到你的OpenClaw扩展工作区：
+**1.** 克隆 ClawAegis：
 
 ```bash
 git clone https://github.com/antgroup/ClawAegis.git
@@ -51,15 +37,20 @@ git clone https://github.com/antgroup/ClawAegis.git
 
 **2.** 安装插件：
 
+**选项 A** — 通过 CLI 安装：
+
 ```bash
 openclaw plugins install ./ClawAegis
 ```
 
-**3.** 或手动安装 — 安装依赖并注册插件入口：
+**选项 B** — 手动将 ClawAegis 添加到你的 OpenClaw 扩展工作区，安装依赖并注册插件入口：
 
 ```bash
-cd ClawAegis && npm install
+cp -r ./ClawAegis ~/.openclaw/extensions/
+cd ~/.openclaw/extensions/ClawAegis && npm install
 ```
+
+**3.** 确保 OpenClaw 加载此包声明的扩展入口：
 
 ```json
 {
@@ -69,7 +60,7 @@ cd ClawAegis && npm install
 }
 ```
 
-**4.** 以观察模式启用ClawAegis，安全上线：
+**4.**（可选）以观察模式启用 ClawAegis，安全上线：
 
 ```json
 {
@@ -78,7 +69,7 @@ cd ClawAegis && npm install
 }
 ```
 
-**5.** 根据需要将高置信度防御提升为 `enforce`：
+**5.**（可选）根据需要将高置信度防御提升为 `enforce`：
 
 ```json
 {
@@ -90,6 +81,29 @@ cd ClawAegis && npm install
   "exfiltrationGuardMode": "enforce"
 }
 ```
+
+---
+
+## ✨ 核心特性
+
+### 运行时防御
+
+ClawAegis 提供一组覆盖智能体全生命周期的内置运行时防御能力，无需额外配置即可自动检测和缓解威胁。
+
+- **五层纵深防御** — 覆盖意图扫描、工具调用治理、工具结果审查、资产保护和输出安全，贯穿九个OpenClaw生命周期钩子。
+- **Skill投毒防御** — 启动时及运行期间持续扫描Skill内容，检测试图绕过审批、禁用安全控制或篡改受保护资产的恶意载荷。
+- **记忆污染防护** — 拒绝对持久化记忆存储（`memory_store`、`MEMORY.md`、`SOUL.md`、`memory/`）的可疑或超大写入，防止跨会话的持久化提示词投毒。
+- **意图与提示词安全** — 检测用户消息中的越狱尝试、密钥窃取请求和插件篡改意图，并向提示词注入安全上下文以影响后续模型推理。
+- **工具调用治理** — 在工具执行前拦截高危Shell命令、编码/混淆载荷、写后执行链、重复变异循环以及SSRF/数据泄露链。
+- **工具结果审查** — 将外部工具输出视为不可信输入，扫描其中的提示词注入、密钥请求和权限提升模式，防止其影响下一步推理。
+- **输出脱敏** — 在助手输出发送或存储前，遮蔽API密钥、令牌及类似敏感值。
+
+### 进阶可配置防御
+
+在内置运行时防御之上，ClawAegis 为安全运营人员和终端用户提供可配置的控制面，支持进阶风险管理和资产保护。
+
+- **可配置安全运营** — 运营人员可通过 `allDefensesEnabled` 全局启用所有防御，通过 `defaultBlockingMode` 设置全局基线，并可逐项覆盖 `selfProtectionMode`、`commandBlockMode`、`memoryGuardMode`、`exfiltrationGuardMode` 等独立控制。每项防御均支持 `enforce`、`observe` 和 `off` 三种模式，实现从监控到主动拦截的渐进式部署。运营人员还可定义 `protectedPaths`、`protectedSkills` 和 `protectedPlugins` 来匹配其环境中的关键资产，并通过 `startupSkillScan` 提前识别风险Skill。检测结果以运行时观测、拦截动作和提升的提示词告警形式呈现，为防御者提供可操作的分类与响应信号。
+- **敏感文件与Skill资产保护** — 敏感文件和目录可添加到 `protectedPaths`，对未授权的读取、写入、删除和篡改进行拦截或观测。高价值Skill和重要插件可通过 `protectedSkills` 和 `protectedPlugins` 注册，防止Skill和插件资产被删除、覆盖或补丁式篡改。自保护机制降低智能体关闭自身防御或静默改写安全配置的风险。对个人用户而言，这意味着私人笔记、文档和自定义Skill得到更安全的处理；对组织而言，这意味着运维手册、审计插件和安全关键配置获得更强的保护。
 
 ---
 

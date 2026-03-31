@@ -1,3 +1,5 @@
+
+
 # ClawAegis
 
 ClawAegis builds a multi-dimensional, defense-in-depth runtime security architecture for OpenClaw-style agents, implementing five-layer defense across the full lifecycle of LLM agents in various Claw environments — from initialization to execution — covering security and reliability risks in agent execution services, including skill poisoning, memory contamination, intent misalignment, malicious execution, and resource exhaustion. As a lightweight built-in security plugin, ClawAegis proactively triggers defense mechanisms at critical OpenClaw stages to dynamically safeguard agent runtime security. It also provides configurable risk identification and response policies for security operators to flexibly and extensibly address agent runtime threats, as well as sensitive file and skill asset protection for everyday users to safeguard personal privacy and assets.
@@ -26,23 +28,9 @@ Through this layered, progressive mechanism, ClawAegis ensures that OpenClaw pos
 
 ---
 
-## ✨ Features
-
-- **Five-Layer Defense-in-Depth** — Covers intent scanning, tool call governance, tool result inspection, asset protection, and output safeguarding across nine OpenClaw lifecycle hooks.
-- **Skill Poisoning Defense** — Scans skill content at startup and continuously, detecting malicious payloads that attempt to bypass approval, disable safety controls, or tamper with protected assets.
-- **Memory Contamination Guard** — Rejects suspicious or oversized writes to persistent memory stores (`memory_store`, `MEMORY.md`, `SOUL.md`, `memory/`), preventing persistent prompt poisoning across sessions.
-- **Intent & Prompt Safety** — Detects jailbreak attempts, secret-exfiltration requests, and plugin-tampering intent in user messages, then injects safety context into prompts to influence subsequent model reasoning.
-- **Tool Call Governance** — Blocks high-risk shell commands, encoded/obfuscated payloads, write-then-execute chains, repeated mutation loops, and SSRF/exfiltration chains before tool execution.
-- **Tool Result Inspection** — Treats external tool outputs as untrusted input, scanning for prompt-injection, secret-request, and escalation patterns before they affect the next reasoning step.
-- **Output Redaction** — Masks API keys, tokens, and similar sensitive values before assistant output is sent or stored.
-- **Asset & Self-Protection** — Guards sensitive files, high-value skills, important plugins, and its own security configuration against unauthorized access and tampering.
-- **Configurable Policies** — Every blocking defense supports `enforce` / `observe` / `off` modes with global defaults and per-defense overrides, enabling staged rollout from monitoring to active blocking.
-
----
-
 ## 🚀 Quick Start
 
-**1.** Add this repository to your OpenClaw extension workspace:
+**1.** Clone ClawAegis:
 
 ```bash
 git clone https://github.com/antgroup/ClawAegis.git
@@ -50,15 +38,20 @@ git clone https://github.com/antgroup/ClawAegis.git
 
 **2.** Install the plugin:
 
+**Option A** — via CLI:
+
 ```bash
 openclaw plugins install ./ClawAegis
 ```
 
-**3.** Or install manually — install dependencies and register the plugin entry:
+**Option B** — manually add ClawAegis to your OpenClaw extension workspace, install dependencies, and register the plugin entry:
 
 ```bash
-cd ClawAegis && npm install
+cp -r ./ClawAegis ~/.openclaw/extensions/
+cd ~/.openclaw/extensions/ClawAegis && npm install
 ```
+
+**3.** Ensure OpenClaw loads the extension entry declared by this package:
 
 ```json
 {
@@ -68,7 +61,7 @@ cd ClawAegis && npm install
 }
 ```
 
-**4.** Enable ClawAegis with observe mode for safe rollout:
+**4.** (Optional) Enable ClawAegis with observe mode for safe rollout:
 
 ```json
 {
@@ -77,7 +70,7 @@ cd ClawAegis && npm install
 }
 ```
 
-**5.** Promote high-confidence defenses to `enforce` as needed:
+**5.** (Optional) Promote high-confidence defenses to `enforce` as needed:
 
 ```json
 {
@@ -89,6 +82,29 @@ cd ClawAegis && npm install
   "exfiltrationGuardMode": "enforce"
 }
 ```
+
+---
+
+## ✨ Features
+
+### Runtime Defense
+
+ClawAegis provides a set of built-in runtime defenses that cover the full agent lifecycle. These defenses detect and mitigate threats automatically without requiring additional configuration.
+
+- **Five-Layer Defense-in-Depth** — Covers intent scanning, tool call governance, tool result inspection, asset protection, and output safeguarding across nine OpenClaw lifecycle hooks.
+- **Skill Poisoning Defense** — Scans skill content at startup and continuously, detecting malicious payloads that attempt to bypass approval, disable safety controls, or tamper with protected assets.
+- **Memory Contamination Guard** — Rejects suspicious or oversized writes to persistent memory stores (`memory_store`, `MEMORY.md`, `SOUL.md`, `memory/`), preventing persistent prompt poisoning across sessions.
+- **Intent & Prompt Safety** — Detects jailbreak attempts, secret-exfiltration requests, and plugin-tampering intent in user messages, then injects safety context into prompts to influence subsequent model reasoning.
+- **Tool Call Governance** — Blocks high-risk shell commands, encoded/obfuscated payloads, write-then-execute chains, repeated mutation loops, and SSRF/exfiltration chains before tool execution.
+- **Tool Result Inspection** — Treats external tool outputs as untrusted input, scanning for prompt-injection, secret-request, and escalation patterns before they affect the next reasoning step.
+- **Output Redaction** — Masks API keys, tokens, and similar sensitive values before assistant output is sent or stored.
+
+### Advanced Configurable Defense
+
+Beyond the built-in runtime defenses, ClawAegis gives security operators and end users a configurable control surface for advanced risk management and asset protection.
+
+- **Configurable Security Operations** — Operators can enable all defenses globally with `allDefensesEnabled`, set a fleet-wide baseline with `defaultBlockingMode`, and override individual controls such as `selfProtectionMode`, `commandBlockMode`, `memoryGuardMode`, and `exfiltrationGuardMode`. Each defense supports `enforce`, `observe`, and `off` modes, enabling staged rollout from monitoring to active blocking. Operators can also define `protectedPaths`, `protectedSkills`, and `protectedPlugins` to match the assets that matter in their environment, and use `startupSkillScan` to identify risky skills early. Detections are surfaced as runtime observations, blocked actions, and promoted prompt warnings, giving defenders actionable signals for triage and response.
+- **Sensitive Files and Skill Asset Protection** — Sensitive files and directories can be added to `protectedPaths` to block or observe unauthorized reads, writes, deletes, and tampering. High-value skills and important plugins can be registered via `protectedSkills` and `protectedPlugins` to prevent deletion, overwrite, or patch-based mutation of skill and plugin assets. Self-protection reduces the chance that the agent disables its own defenses or silently rewrites security configuration. For personal users, this means safer handling of private notes, documents, and custom skills; for organizations, it means stronger protection for operational runbooks, audit plugins, and security-critical configuration.
 
 ---
 
