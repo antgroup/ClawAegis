@@ -183,6 +183,6 @@ Remotely deployed agents face risks from API key theft, dangerous command execut
 
 ---
 
-## 📄 License
+## 📄 Legal Information
 
-See [LEGAL.md](LEGAL.md) for license and legal information.
+See [LEGAL.md](LEGAL.md) for legal information.
