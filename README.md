@@ -38,30 +38,11 @@ git clone https://github.com/antgroup/ClawAegis.git
 
 **2.** Install the plugin:
 
-**Option A** — via CLI:
-
 ```bash
 openclaw plugins install ./ClawAegis
 ```
 
-**Option B** — manually add ClawAegis to your OpenClaw extension workspace, install dependencies, and register the plugin entry:
-
-```bash
-cp -r ./ClawAegis ~/.openclaw/extensions/
-cd ~/.openclaw/extensions/ClawAegis && npm install
-```
-
-**3.** Ensure OpenClaw loads the extension entry declared by this package:
-
-```json
-{
-  "openclaw": {
-    "extensions": ["./index.ts"]
-  }
-}
-```
-
-**4.** (Optional) Enable ClawAegis with observe mode for safe rollout:
+**3.** (Optional) Enable ClawAegis with observe mode for safe rollout:
 
 ```json
 {
@@ -70,7 +51,7 @@ cd ~/.openclaw/extensions/ClawAegis && npm install
 }
 ```
 
-**5.** (Optional) Promote high-confidence defenses to `enforce` as needed:
+**4.** (Optional) Promote high-confidence defenses to `enforce` as needed:
 
 ```json
 {
@@ -185,6 +166,4 @@ Remotely deployed agents face risks from API key theft, dangerous command execut
 
 ## 📄 License
 
-This project is licensed under the Apache License 2.0.
-
-See [LEGAL.md](LEGAL.md) for legal information.
+This project is licensed under the [Apache License 2.0](LICENSE). See [LEGAL.md](LEGAL.md) for additional legal information.

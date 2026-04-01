@@ -37,30 +37,11 @@ git clone https://github.com/antgroup/ClawAegis.git
 
 **2.** 安装插件：
 
-**选项 A** — 通过 CLI 安装：
-
 ```bash
 openclaw plugins install ./ClawAegis
 ```
 
-**选项 B** — 手动将 ClawAegis 添加到你的 OpenClaw 扩展工作区，安装依赖并注册插件入口：
-
-```bash
-cp -r ./ClawAegis ~/.openclaw/extensions/
-cd ~/.openclaw/extensions/ClawAegis && npm install
-```
-
-**3.** 确保 OpenClaw 加载此包声明的扩展入口：
-
-```json
-{
-  "openclaw": {
-    "extensions": ["./index.ts"]
-  }
-}
-```
-
-**4.**（可选）以观察模式启用 ClawAegis，安全上线：
+**3.**（可选）以观察模式启用 ClawAegis，安全上线：
 
 ```json
 {
@@ -69,7 +50,7 @@ cd ~/.openclaw/extensions/ClawAegis && npm install
 }
 ```
 
-**5.**（可选）根据需要将高置信度防御提升为 `enforce`：
+**4.**（可选）根据需要将高置信度防御提升为 `enforce`：
 
 ```json
 {
@@ -184,4 +165,4 @@ OpenClaw既可以由个人用户部署在本地，也可以由服务商部署在
 
 ## 📄 许可证
 
-详见 [LEGAL.md](LEGAL.md)。
+本项目基于 [Apache License 2.0](LICENSE) 开源。更多法律信息详见 [LEGAL.md](LEGAL.md)。
