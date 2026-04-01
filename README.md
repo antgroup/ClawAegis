@@ -183,6 +183,8 @@ Remotely deployed agents face risks from API key theft, dangerous command execut
 
 ---
 
-## 📄 Legal Information
+## 📄 License
+
+This project is licensed under the Apache License 2.0.
 
 See [LEGAL.md](LEGAL.md) for legal information.
