@@ -326,10 +326,21 @@ export const USER_RISK_RULES = [
       /\bprint (?:the )?(?:system prompt|developer message)\b/i,
       /\bextract (?:the )?(?:system prompt|developer message)\b/i,
       /(?:显示|打印|输出|提取)(?:系统提示词|system prompt|developer message)/i,
+      // 以代码/其他形式间接表达预设规则、系统提示、初始化指令
+      /\b(?:represent|express|rewrite|translate|encode|serialize|output)\b.{0,40}\b(?:system prompt|developer message|your (?:rules?|instructions?|guidelines?|constraints?|preset))\b/i,
+      /\b(?:in|using|as)\b.{0,16}\b(?:python|json|yaml|code|pseudocode)\b.{0,40}\b(?:your (?:rules?|instructions?|guidelines?|preset|system)|system prompt|developer message)\b/i,
+      /(?:用|以|转成|转为|转换为|写成).{0,16}(?:python|代码|json|yaml|伪代码).{0,40}(?:预设|规则|系统提示|初始指令|system prompt|developer message)/i,
+      /(?:预设规则|预设指令|预设提示|初始化指令|初始规则).{0,40}(?:用|以|转|表示|展示|输出|打印|告诉我|是什么|显示)/i,
+      /(?:你的|您的|ai的|模型的).{0,16}(?:预设|规则|限制|初始指令|系统提示).{0,24}(?:是什么|有哪些|告诉我|输出|显示|打印)/i,
     ],
     compactPatterns: [
       /(?:reveal|show(?:me)?|print|extract)(?:the)?(?:systemprompt|developermessage)/i,
       /(?:显示|打印|输出|提取)(?:系统提示词|systemprompt|developermessage)/i,
+      /(?:represent|express|rewrite|translate|encode|serialize|output).{0,32}(?:systemprompt|developermessage|your(?:rules?|instructions?|guidelines?|preset))/i,
+      /(?:in|using|as).{0,12}(?:python|json|yaml|code|pseudocode).{0,32}(?:your(?:rules?|instructions?|guidelines?|preset|system)|systemprompt)/i,
+      /(?:用|以|转成|转为).{0,12}(?:python|代码|json|yaml|伪代码).{0,32}(?:预设|规则|系统提示|初始指令)/i,
+      /(?:预设规则|预设指令|预设提示|初始化指令|初始规则)/i,
+      /(?:你的|您的).{0,12}(?:预设|规则|限制|初始指令|系统提示).{0,16}(?:是什么|有哪些|告诉我|输出|显示|打印)/i,
     ],
   },
   {
@@ -375,6 +386,7 @@ export const USER_RISK_RULES = [
       /\bcurl\b[^|\n\r]*\|\s*(?:sh|bash)\b/i,
       /\bwget\b[^|\n\r]*\|\s*(?:sh|bash)\b/i,
       /\bwhile\s+(?:true|:)\s*;\s*do\b/i,
+      /\bwhile\s+\[\s*[1-9]\s*\]\s*;\s*do\b/i,
       /\bfor\s*\(\(\s*;\s*;\s*\)\)\s*;\s*do\b/i,
       /\b(?:run|execute)\b.{0,24}\b(?:sudo|bash|exec)\b/i,
       /\b(?:shutdown|poweroff|halt|reboot)\b/i,
@@ -385,10 +397,12 @@ export const USER_RISK_RULES = [
       /(?:运行|执行|启动|调用).{0,24}\bopenclaw\b/i,
       /(?:关闭|停止|重启|重开|终止|杀掉).{0,24}\bopenclaw\b/i,
       /(?:格式化|关机|重启|重开机|重启系统|重启机器|无限循环|死循环)/i,
+      // 重定向截断 shell 配置文件（排除追加 >>）
+      /(?<![>])>\s*~\/\.(?:bashrc|zshrc|bash_profile|zprofile|profile|bash_login|zshenv)\b/i,
     ],
     compactPatterns: [
       /rmrf/i,
-      /while(?:true|:)do/i,
+      /while(?:true|:|[1-9])do/i,
       /(?:run|execute|invoke|start).{0,24}openclaw/i,
       /(?:close|stop|restart|reboot|shutdown|disable|kill|terminate).{0,24}openclaw/i,
       /(?:运行|执行|启动|调用).{0,16}openclaw/i,
@@ -401,12 +415,20 @@ export const USER_RISK_RULES = [
     patterns: [
       /\b(?:show|send|reveal|print|dump)\b.{0,24}\b(?:api key|token|credential|cookie|ssh key|env)\b/i,
       /\bwhat(?:'s| is)\b.{0,24}\b(?:api key|token|credential|cookie|ssh key)\b/i,
-      /(?:显示|发送|输出|打印|导出).{0,24}(?:api key|token|credential|cookie|ssh key|env|密钥|秘钥|令牌|凭证|环境变量)/i,
+      // "token" 单独出现时需要前置限定词（api/access/auth/bearer），避免"输出太多省token"误报
+      /(?:显示|发送|输出|打印|导出).{0,24}(?:api key|credential|cookie|ssh key|密钥|秘钥|令牌|凭证|环境变量)/i,
+      /(?:显示|发送|输出|打印|导出).{0,24}(?:api|access|auth|bearer|secret)\s*token/i,
+      // "查看/读取 env 环境变量"——要求不是询问语境（无"如何/怎么/方法/?"等疑问词）
+      /(?<!(?:如何|怎么).{0,8})(?:查看|读取|访问|获取|列出)(?:(?!(?:如何|怎么|方法|教程|？|\?)).){0,24}(?:\benv\b|环境变量)(?!(?:如何|怎么|方法|教程|配置方法))/i,
+      /\b(?:read|view|get|list|cat|print)\b.{0,24}\b(?:env(?:ironment)? variables?|process\.env)\b/i,
     ],
     compactPatterns: [
       /(?:show|send|reveal|print|dump).{0,16}(?:apikey|token|credential|cookie|sshkey|env)/i,
       /whats.{0,16}(?:apikey|token|credential|cookie|sshkey)/i,
-      /(?:显示|发送|输出|打印|导出).{0,16}(?:apikey|token|credential|cookie|sshkey|env|密钥|秘钥|令牌|凭证|环境变量)/i,
+      /(?:显示|发送|输出|打印|导出).{0,16}(?:apikey|credential|cookie|sshkey|env|密钥|秘钥|令牌|凭证|环境变量)/i,
+      /(?:显示|发送|输出|打印|导出).{0,16}(?:api|access|auth|bearer|secret)token/i,
+      // 中文查询动词 + env/环境变量的 compact 不单独设置，依赖 patterns 层的豁免逻辑
+      /(?:read|view|get|list|cat|print).{0,16}(?:environmentvariables?|processenv)/i,
     ],
   },
   {
@@ -561,7 +583,7 @@ export const TOOL_RESULT_RISK_RULES = [
 
 export const SKILL_SCAN_SAFE_EXAMPLE_PATTERNS = [
   /\bfor example\b/i,
-  /\bexample(?:\s+(?:command|only|usage|snippet)|:)\b/i,
+  /\bexample(?:\s+(?:command|only|usage|snippet)|:)/i,
   /\b(?:for reference|reference only)\b/i,
   /\b(?:documentation|docs?)\b[\s\S]{0,24}\b(?:only|example|reference)\b/i,
   /\bsecurity warning\b/i,
@@ -572,7 +594,7 @@ export const SKILL_SCAN_SAFE_EXAMPLE_PATTERNS = [
   /\b(?:do not|don't|never)\b[\s\S]{0,24}\b(?:run|execute|install|pipe)\b/i,
   /\bexplain why\b/i,
   /(?:示例|样例|参考|文档示例|安全警告|反例|反模式|审计说明)/i,
-  /(?:不要|禁止|不得|切勿)[\s\S]{0,12}(?:运行|执行|安装|复制执行)/i,
+  /(?:不要|禁止|不得|切勿)[\s\S]{0,40}(?:运行|执行|安装|复制执行)/i,
   /解释风险/i,
 ] as const;
 
@@ -606,7 +628,8 @@ export const SKILL_SCAN_REMOTE_BOOTSTRAP_RULES = [
     directExecutionPatterns: [
       /\b(?:curl|wget)\b[^\n\r]*https?:\/\/[^\s)"']+[^\n\r]*(?:-o|--output)\s+\S+[^\n\r]*(?:&&|;)\s*chmod\s+\+x\b[^\n\r]*(?:&&|;)\s*(?:\.\/|\/)\S+/i,
       /\b(?:curl|wget)\b[^\n\r]*https?:\/\/[^\s)"']+[^\n\r]*(?:&&|;)\s*chmod\s+\+x\b[^\n\r]*(?:&&|;)\s*(?:\.\/|\/)\S+/i,
-      /\b(?:irm|iwr|invoke-webrequest)\b[^\n\r]*https?:\/\/[^\s)"']+[^\n\r]*(?:&&|;)\s*(?:start-process|&)\s+\S+/i,
+      /\b(?:irm|iwr|invoke-webrequest)\b[^\n\r]*https?:\/\/[^\s)"']+[^\n\r]*(?:&&|;|\|)\s*(?:start-process|&)\s+\S+/i,
+      /\b(?:irm|iwr|invoke-webrequest)\b[^\n\r]*https?:\/\/[^\s)"']+[^\n\r]*\|\s*start-process\b/i,
     ],
     downloadPatterns: [
       new RegExp(
@@ -635,18 +658,21 @@ export const SKILL_SCAN_RULES = [
   {
     flag: "system-prompt-leak",
     match: "any",
+    lineScope: "unsafe_only",
     patterns: [/\bsystem prompt\b/i, /\bdeveloper message\b/i, /系统提示词/i, /开发者消息/i],
     compactPatterns: [/systemprompt/i, /developermessage/i, /系统提示词/i, /开发者消息/i],
   },
   {
     flag: "approval-bypass",
     match: "any",
+    lineScope: "unsafe_only",
     patterns: [/\bbypass approval\b/i, /\bignore approval\b/i, /\bskip approval\b/i, /绕过审批/i, /忽略审批/i, /跳过审批/i],
     compactPatterns: [/bypassapproval/i, /ignoreapproval/i, /skipapproval/i, /绕过审批/i, /忽略审批/i, /跳过审批/i],
   },
   {
     flag: "disable-claw-aegis",
     match: "any",
+    lineScope: "unsafe_only",
     patterns: [
       /\b(?:disable|ignore|bypass|remove|uninstall)\b.{0,32}\bclaw-aegis\b/i,
       /(?:禁用|忽略|绕过|删除|卸载|移除).{0,24}claw-aegis/i,
@@ -668,10 +694,13 @@ export const SKILL_SCAN_RULES = [
   },
   {
     flag: "credential-exfiltration",
-    match: "all",
+    match: "any",
+    lineScope: "unsafe_only",
     patterns: [
-      /(?:\b(?:api key|token|credential|cookie|ssh key)\b|(?:密钥|秘钥|令牌|凭证))/i,
-      /(?:\b(?:upload|send to|post to|webhook|exfiltrate)\b|(?:上传|发送到|外传))/i,
+      // credential → sink（200 字符窗口）
+      /(?:\b(?:api key|token|credential|cookie|ssh key)\b|(?:密钥|秘钥|令牌|凭证))[\s\S]{0,200}(?:\b(?:upload|send to|post to|webhook|exfiltrate)\b|(?:上传|发送到|外传))/i,
+      // sink → credential（反向窗口）
+      /(?:\b(?:upload|send to|post to|webhook|exfiltrate)\b|(?:上传|发送到|外传))[\s\S]{0,200}(?:\b(?:api key|token|credential|cookie|ssh key)\b|(?:密钥|秘钥|令牌|凭证))/i,
     ],
   },
 ] as const satisfies readonly PatternRiskRule[];

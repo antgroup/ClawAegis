@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
@@ -100,8 +101,13 @@ const HIGH_RISK_COMMAND_PATTERNS = [
   /\bcurl\b[^|\n\r]*\|\s*(?:sh|bash)\b/i,
   /\bwget\b[^|\n\r]*\|\s*(?:sh|bash)\b/i,
   /\|\s*(?:sh|bash)\b/i,
+  // 无限循环：while true/:/1/[ 1 ] 等形式
   /\bwhile\s+(?:true|:)\s*;\s*do\b/i,
+  /\bwhile\s+\[\s*[1-9]\s*\]\s*;\s*do\b/i,
   /\bfor\s*\(\(\s*;\s*;\s*\)\)\s*;\s*do\b/i,
+  // 重定向截断 shell 配置文件（> ~/.bashrc，排除追加 >>）
+  /(?<![>])>\s*~\/\.(?:bashrc|zshrc|bash_profile|zprofile|profile|bash_login|zshenv)\b/i,
+  /(?<![>])>\s*\/(?:etc\/(?:profile|environment|bash\.bashrc)|root\/\.(?:bashrc|profile))\b/i,
   /\bshutdown\b/i,
   /\bpoweroff\b/i,
   /\bhalt\b/i,
@@ -109,7 +115,7 @@ const HIGH_RISK_COMMAND_PATTERNS = [
   /\binit\s+[06]\b/i,
   /\bmkfs(?:\.[A-Za-z0-9_-]+)?\b/i,
   /\bdiskutil\s+eraseDisk\b/i,
-  /\bformat\s+[A-Za-z]:\b/i,
+  /\bformat\s+[A-Za-z]:(?:[\\/]|$|\s)/i,
 ] as const;
 
 const INLINE_EXECUTORS = new Set(["sh", "bash", "python", "node", "pwsh"]);
@@ -190,17 +196,22 @@ const SENSITIVE_PROTECTED_PATH_PATTERNS = [
   /(?:^|\/)\.antconfig(?:\/|$)/i,
   /(?:^|\/)\.openclaw\/openclaw\.json(?:$|[/*?])/i,
   /(?:^|\/)\.openclaw\/extensions\/claw-aegis(?:\/|$|[/*?])/i,
-  /(?:^|\/)skills\/(?:alipay-setup|mcp-router|minimax-image-fallback|call-alipay-service|deep-search-skill|image_generation|antv-infographic-creator|html_reporter|miniprogram-creator)(?:\/|$|[/*?])/i,
+  // shell 配置文件（防止重定向截断攻击）
+  /(?:^|\/)\.(?:bashrc|zshrc|bash_profile|zprofile|profile|bash_login|zshenv)(?:$|[/*?])/i,
 ] as const;
 const SENSITIVE_PATH_TEXT_PATTERNS = [
   /(?:^|[^a-z0-9_])\.ssh(?:[^a-z0-9_]|$)/i,
   /(?:^|[^a-z0-9_])\.antconfig(?:[^a-z0-9_]|$)/i,
   /\/\.openclaw\/openclaw\.json(?:[^a-z0-9_]|$)/i,
+  // ~/ 前缀形式（expandHomeLike 只处理字符串开头，整句文本中的 ~ 不会展开）
+  /~\/\.openclaw\/openclaw\.json(?:[^a-z0-9_]|$)/i,
   /\/\.openclaw\/extensions\/claw-aegis(?:[^a-z0-9_-]|$)/i,
-  /\/skills\/(?:alipay-setup|mcp-router|minimax-image-fallback|call-alipay-service|deep-search-skill|image_generation|antv-infographic-creator|html_reporter|miniprogram-creator)(?:[^a-z0-9_-]|$)/i,
-  /\/skills\b.{0,80}\b(?:alipay-setup|mcp-router|minimax-image-fallback|call-alipay-service|deep-search-skill|image_generation|antv-infographic-creator|html_reporter|miniprogram-creator)\b/i,
-  /\b(?:alipay-setup|mcp-router|minimax-image-fallback|call-alipay-service|deep-search-skill|image_generation|antv-infographic-creator|html_reporter|miniprogram-creator)\b.{0,24}\b(?:skill|skills|skill\.md|技能)\b/i,
-  /\b(?:skill|skills|skill\.md|技能)\b.{0,24}\b(?:alipay-setup|mcp-router|minimax-image-fallback|call-alipay-service|deep-search-skill|image_generation|antv-infographic-creator|html_reporter|miniprogram-creator)\b/i,
+  // .openclaw/agents/ 目录（含 models.json 等 agent 配置）
+  /\/\.openclaw\/agents\//i,
+  /(?:^|[^a-z0-9_])\.openclaw\/agents(?:[^a-z0-9_-]|$)/i,
+  // shell 配置文件（防止重定向截断攻击）
+  /~\/\.(?:bashrc|zshrc|bash_profile|zprofile|profile|bash_login|zshenv)(?:[^a-z0-9_]|$)/i,
+  /\/\.(?:bashrc|zshrc|bash_profile|zprofile|profile|bash_login|zshenv)(?:[^a-z0-9_]|$)/i,
 ] as const;
 
 export const STATIC_SYSTEM_SELF_PROTECTION_RULE =
@@ -1223,7 +1234,14 @@ function expandHomeLike(input: string, homeDir = os.homedir()): string {
 
 function resolveAbsolutePath(input: string, baseDir = process.cwd()): string {
   const expanded = expandHomeLike(input);
-  return path.normalize(path.isAbsolute(expanded) ? expanded : path.resolve(baseDir, expanded));
+  const normalized = path.normalize(
+    path.isAbsolute(expanded) ? expanded : path.resolve(baseDir, expanded),
+  );
+  try {
+    return fs.realpathSync(normalized);
+  } catch {
+    return normalized;
+  }
 }
 
 function normalizeComparablePath(input: string, baseDir = process.cwd()): string {
@@ -2223,19 +2241,31 @@ export function resolveSelfProtectionTextViolation(
     return BLOCK_REASON_PROTECTED_PATH;
   }
 
-  const toolImpliesSensitivePathAccess =
-    queryLikeTool.has(normalizedTool) ||
-    (mutationLikeTool.has(normalizedTool) &&
-      normalizedTool !== "exec" &&
-      normalizedTool !== "bash");
-  if (
-    sensitivePathTexts.some(
-      (text) =>
-        mentionsSensitivePathTarget(text) &&
-        (toolImpliesSensitivePathAccess || hasSensitivePathOperation(text)),
-    )
-  ) {
-    return BLOCK_REASON_PROTECTED_PATH;
+  const toolImpliesQueryAccess = queryLikeTool.has(normalizedTool);
+  const toolImpliesMutationPathAccess =
+    mutationLikeTool.has(normalizedTool) &&
+    normalizedTool !== "exec" &&
+    normalizedTool !== "bash";
+  if (toolImpliesQueryAccess) {
+    // 查询类工具：参数文本中出现敏感路径引用即拦截
+    if (sensitivePathTexts.some((text) => mentionsSensitivePathTarget(text))) {
+      return BLOCK_REASON_PROTECTED_PATH;
+    }
+  } else if (toolImpliesMutationPathAccess) {
+    // 写入/编辑类工具：只有实际操作路径（candidatePaths）精确匹配时才拦截，
+    // 避免新建 skill 时因 path 参数间接含受保护 skill 名而误报
+    if (candidatePaths.some((p) => mentionsSensitivePathTarget(p))) {
+      return BLOCK_REASON_PROTECTED_PATH;
+    }
+  } else {
+    // 其他工具：文本中明确包含敏感路径操作才拦截
+    if (
+      sensitivePathTexts.some(
+        (text) => mentionsSensitivePathTarget(text) && hasSensitivePathOperation(text),
+      )
+    ) {
+      return BLOCK_REASON_PROTECTED_PATH;
+    }
   }
 
   const protectedSkillIds = options?.protectedSkillIds ?? [];
@@ -2283,7 +2313,7 @@ export function detectHighRiskCommand(command: string | undefined): string | und
   return (
     HIGH_RISK_COMMAND_PATTERNS.some((pattern) => pattern.test(normalized)) ||
     /rmrf(?:\/|\*|$)/i.test(compact) ||
-    /while(?:true|:)do/i.test(compact)
+    /while(?:true|:|[1-9])do/i.test(compact)
   )
     ? BLOCK_REASON_HIGH_RISK_OPERATION
     : undefined;

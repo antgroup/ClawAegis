@@ -1,0 +1,5 @@
+CLAUDE.md
+package-lock.json
+src/__tests__
+node_modules
+vitest.config.ts
