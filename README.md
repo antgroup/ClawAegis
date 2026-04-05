@@ -173,3 +173,19 @@ Remotely deployed agents face risks from API key theft, dangerous command execut
 ## 📄 License
 
 This project is licensed under the [Apache License 2.0](LICENSE). See [LEGAL.md](LEGAL.md) for additional legal information.
+
+---
+
+## 📖 Citation
+
+```bibtex
+@misc{deng2026tamingopenclawsecurityanalysis,
+      title={Taming OpenClaw: Security Analysis and Mitigation of Autonomous LLM Agent Threats},
+      author={Xinhao Deng and Yixiang Zhang and Jiaqing Wu and Jiaqi Bai and Sibo Yi and Zhuoheng Zou and Yue Xiao and Rennai Qiu and Jianan Ma and Jialuo Chen and Xiaohu Du and Xiaofang Yang and Shiwen Cui and Changhua Meng and Weiqiang Wang and Jiaxing Song and Ke Xu and Qi Li},
+      year={2026},
+      eprint={2603.11619},
+      archivePrefix={arXiv},
+      primaryClass={cs.CR},
+      url={https://arxiv.org/abs/2603.11619},
+}
+```
