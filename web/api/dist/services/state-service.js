@@ -1,6 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { TRUSTED_SKILLS_FILENAME, SELF_INTEGRITY_FILENAME } from "@claw-aegis-web/shared";
+import { TRUSTED_SKILLS_FILENAME, SELF_INTEGRITY_FILENAME, DEFENSE_EVENTS_FILENAME } from "@claw-aegis-web/shared";
 export class StateService {
     stateDir;
     constructor(stateDir) {
@@ -17,6 +17,9 @@ export class StateService {
     }
     getSelfIntegrityPath() {
         return path.join(this.stateDir, SELF_INTEGRITY_FILENAME);
+    }
+    getDefenseEventsPath() {
+        return path.join(this.stateDir, DEFENSE_EVENTS_FILENAME);
     }
     async getTrustedSkills() {
         if (!this.isConfigured())

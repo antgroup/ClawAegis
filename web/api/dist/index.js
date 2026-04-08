@@ -1,6 +1,10 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { createServer } from "./server.js";
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const pluginRoot = path.resolve(__dirname, "..", "..", "..");
 const port = parseInt(process.env.AEGIS_PORT ?? "3800", 10);
-const configDir = process.env.AEGIS_CONFIG_DIR ?? process.cwd();
+const configDir = process.env.AEGIS_CONFIG_DIR ?? pluginRoot;
 const stateDir = process.env.AEGIS_STATE_DIR ?? "";
 for (const arg of process.argv.slice(2)) {
     const [key, value] = arg.split("=");

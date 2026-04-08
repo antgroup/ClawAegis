@@ -19,7 +19,7 @@ export function createServer(options) {
     const stateService = new StateService(options.stateDir);
     const eventService = new EventService();
     const fileWatcher = new FileWatcher(configService, stateService, eventService);
-    fileWatcher.start();
+    fileWatcher.start().catch((err) => console.error("[claw-aegis-web] FileWatcher start error:", err));
     app.use(`${API_PREFIX}/config`, createConfigRouter(configService));
     app.use(`${API_PREFIX}/status`, createStatusRouter(configService, stateService));
     app.use(`${API_PREFIX}/events`, createEventsRouter(eventService));

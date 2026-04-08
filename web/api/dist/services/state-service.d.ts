@@ -6,6 +6,7 @@ export declare class StateService {
     isConfigured(): boolean;
     getTrustedSkillsPath(): string;
     getSelfIntegrityPath(): string;
+    getDefenseEventsPath(): string;
     getTrustedSkills(): Promise<TrustedSkillInfo[]>;
     removeTrustedSkill(skillPath: string): Promise<boolean>;
     getSelfIntegrity(): Promise<SelfIntegrityStatus>;

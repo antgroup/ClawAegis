@@ -26,6 +26,7 @@ export const SKILL_SCAN_TARGET_FILENAME = "SKILL.md";
 
 export const TRUSTED_SKILLS_FILENAME = "trusted-skills.json";
 export const SELF_INTEGRITY_FILENAME = "self-integrity.json";
+export const DEFENSE_EVENTS_FILENAME = "defense-events.jsonl";
 
 export const BLOCK_REASON_PROTECTED_PATH =
   "安全限制：禁止访问、查询、修改、删除、关闭或绕过受保护的敏感路径、配置、重要 skill 或 claw-aegis 插件目录。";

@@ -16,6 +16,7 @@ import type {
 } from "../runtime-api.js";
 import {
   CLAW_AEGIS_PLUGIN_ID,
+  DEFENSE_EVENTS_FILENAME,
   STARTUP_SCAN_BUDGET_MS,
 } from "./config.js";
 import {
@@ -375,6 +376,31 @@ function isDefenseEnabled(mode: DefenseMode): boolean {
   return mode !== "off";
 }
 
+type DefenseEventRecord = {
+  timestamp: number;
+  defense: string;
+  result: "blocked" | "observed";
+  toolName?: string;
+  reason?: string;
+  details?: Record<string, unknown>;
+};
+
+function createDefenseEventWriter(stateDir: string) {
+  const eventsPath = path.join(stateDir, DEFENSE_EVENTS_FILENAME);
+  let ensured = false;
+  return (record: DefenseEventRecord) => {
+    const line = JSON.stringify(record) + "\n";
+    const doWrite = async () => {
+      if (!ensured) {
+        await fs.mkdir(stateDir, { recursive: true });
+        ensured = true;
+      }
+      await fs.appendFile(eventsPath, line, "utf8");
+    };
+    doWrite().catch(() => {});
+  };
+}
+
 function logObservedToolCall(params: {
   logger: AegisLogger;
   mechanism: string;
@@ -413,6 +439,7 @@ export function createClawAegisRuntime(
   const logger = createAegisLogger(api);
   const now = options?.now ?? Date.now;
   const stateDir = resolveClawAegisStateDir(api);
+  const emitDefenseEvent = createDefenseEventWriter(stateDir);
   const config = resolveClawAegisPluginConfig(api);
   const skillScanRoots = resolveSkillScanRoots(api);
   const state = new ClawAegisState({ stateDir, logger, now: options?.now });
@@ -583,6 +610,13 @@ export function createClawAegisRuntime(
           return;
         }
         state.noteUserRisk(sessionKey, match.flags);
+        emitDefenseEvent({
+          timestamp: now(),
+          defense: "user_risk_scan",
+          result: "observed",
+          reason: `检测到风险标记: ${match.flags.join(", ")}`,
+          details: { flags: match.flags },
+        });
         logger.warn("claw-aegis: 检测到用户风险请求", {
           event: "user_risk_detected",
           hook: "message_received",
@@ -641,6 +675,13 @@ export function createClawAegisRuntime(
         const sanitized = sanitizeSensitiveOutputText(event.content, { observedSecrets });
         const durationMs = now() - startedAt;
         if (sanitized.changed) {
+          emitDefenseEvent({
+            timestamp: now(),
+            defense: "output_redaction",
+            result: "observed",
+            reason: `脱敏 ${sanitized.redactionCount} 处敏感内容`,
+            details: { redactionCount: sanitized.redactionCount, matchedKeywords: sanitized.matchedKeywords },
+          });
           logger.warn("claw-aegis: 已脱敏对外发送消息中的敏感内容", {
             event: "outbound_message_redacted",
             hook: "message_sending",
@@ -983,6 +1024,14 @@ export function createClawAegisRuntime(
           };
 
           if (evaluation.result === "blocked") {
+            emitDefenseEvent({
+              timestamp: now(),
+              defense: strategy.id,
+              result: "blocked",
+              toolName: normalizedToolName,
+              reason: evaluation.reason,
+              details: evaluation.extra,
+            });
             logger.warn(strategy.blockedMessage ?? "claw-aegis: 已阻止风险工具调用", {
               event: "tool_call_blocked",
               hook: "before_tool_call",
@@ -1011,6 +1060,14 @@ export function createClawAegisRuntime(
           }
 
           if (evaluation.result === "observed") {
+            emitDefenseEvent({
+              timestamp: now(),
+              defense: strategy.id,
+              result: "observed",
+              toolName: normalizedToolName,
+              reason: evaluation.reason ?? "unknown",
+              details: evaluation.extra,
+            });
             logObservedToolCall({
               logger,
               mechanism: strategy.id,
@@ -1208,6 +1265,13 @@ export function createClawAegisRuntime(
           const sanitized = sanitizeAssistantMessage(message, { observedSecrets });
           const durationMs = now() - startedAt;
           if (sanitized.changed) {
+            emitDefenseEvent({
+              timestamp: now(),
+              defense: "output_redaction",
+              result: "observed",
+              reason: `脱敏 assistant 输出 ${sanitized.redactionCount} 处`,
+              details: { redactionCount: sanitized.redactionCount, matchedKeywords: sanitized.matchedKeywords },
+            });
             logger.warn("claw-aegis: 已脱敏 assistant 输出中的敏感内容", {
               event: "assistant_output_redacted",
               hook: "before_message_write",
@@ -1342,6 +1406,14 @@ export function createClawAegisRuntime(
             outcome.riskFlags.length > 0 ||
             sanitized.removedTokenCount > 0
           ) {
+            emitDefenseEvent({
+              timestamp: now(),
+              defense: "tool_result_scan",
+              result: "observed",
+              toolName: typeof message.toolName === "string" ? message.toolName : undefined,
+              reason: `风险标记: ${outcome.riskFlags.join(", ") || "suspicious/oversize"}`,
+              details: { flags: outcome.riskFlags, suspicious: outcome.suspicious, oversize: outcome.oversize },
+            });
             logger.warn("claw-aegis: 已完成工具结果审查", logMeta);
           } else {
             logger.debug?.("claw-aegis: 已完成工具结果审查", logMeta);

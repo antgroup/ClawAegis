@@ -6,8 +6,12 @@ export declare class FileWatcher {
     private readonly stateService;
     private readonly eventService;
     private watcher;
+    private eventsFileOffset;
     constructor(configService: ConfigService, stateService: StateService, eventService: EventService);
-    start(): void;
+    start(): Promise<void>;
     stop(): void;
+    private loadExistingEvents;
+    private readNewEvents;
+    private parseLine;
 }
 //# sourceMappingURL=file-watcher.d.ts.map
