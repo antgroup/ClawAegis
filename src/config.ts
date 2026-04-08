@@ -86,8 +86,8 @@ export const clawAegisPluginConfigSchema = {
   type: "object",
   additionalProperties: false,
   properties: {
-    allDefensesEnabled: defaultEnabledBooleanSchema,
-    defaultBlockingMode: defaultDefenseModeSchema,
+    allDefensesEnabled: true,
+    defaultBlockingMode: 'observe',
     selfProtectionEnabled: defaultEnabledBooleanSchema,
     selfProtectionMode: defaultDefenseModeSchema,
     commandBlockEnabled: defaultEnabledBooleanSchema,
@@ -114,6 +114,7 @@ export const clawAegisPluginConfigSchema = {
     protectedSkills: {
       type: "array",
       items: { type: "string" },
+      default: ["ClawHub"],
     },
     protectedPlugins: {
       type: "array",
