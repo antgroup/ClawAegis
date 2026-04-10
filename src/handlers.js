@@ -4,6 +4,7 @@ import path from "node:path";
 import {
   CLAW_AEGIS_PLUGIN_ID,
   DEFENSE_EVENTS_FILENAME,
+  SKILL_SCAN_EVENTS_FILENAME,
   STARTUP_SCAN_BUDGET_MS
 } from "./config.js";
 import {
@@ -279,6 +280,21 @@ function createDefenseEventWriter(stateDir) {
     doWrite().catch(() => {});
   };
 }
+function createSkillScanEventWriter(stateDir) {
+  const eventsPath = path.join(stateDir, SKILL_SCAN_EVENTS_FILENAME);
+  let ensured = false;
+  return (record) => {
+    const line = JSON.stringify(record) + "\n";
+    const doWrite = async () => {
+      if (!ensured) {
+        await fs.mkdir(stateDir, { recursive: true });
+        ensured = true;
+      }
+      await fs.appendFile(eventsPath, line, "utf8");
+    };
+    doWrite().catch(() => {});
+  };
+}
 function logObservedToolCall(params) {
   params.logger.warn(params.message, {
     event: "tool_call_observed",
@@ -301,11 +317,13 @@ function createClawAegisRuntime(api, options) {
   const config = resolveClawAegisPluginConfig(api);
   const skillScanRoots = resolveSkillScanRoots(api);
   const state = new ClawAegisState({ stateDir, logger, now: options?.now });
+  const emitSkillScanEvent = createSkillScanEventWriter(stateDir);
   const scanService = new SkillScanService({
     state,
     logger,
     now: options?.now,
-    runner: options?.scanRunner
+    runner: options?.scanRunner,
+    onScanComplete: emitSkillScanEvent
   });
   const toolCallDefenseStrategies = options?.toolCallDefenseStrategies ?? TOOL_CALL_DEFENSE_STRATEGIES;
   const staticSystemContext = config.promptGuardEnabled ? buildStaticSystemContext({ selfProtectionEnabled: config.selfProtectionEnabled }) : void 0;
@@ -395,6 +413,9 @@ function createClawAegisRuntime(api, options) {
       message_received: (event, ctx) => {
         const startedAt = now();
         const sessionKey = ctx.sessionKey?.trim();
+        if (sessionKey && event.content) {
+          state.noteLastUserInput(sessionKey, event.content);
+        }
         logDefenseStart(logger, {
           hook: "message_received",
           mechanism: "user_risk_scan",
@@ -460,6 +481,7 @@ function createClawAegisRuntime(api, options) {
           result: "observed",
           reason: `检测到风险标记: ${match.flags.join(", ")}`,
           details: { flags: match.flags },
+          userInput: (event.content ?? "").slice(0, 500)
         });
         logger.warn("claw-aegis: \u68C0\u6D4B\u5230\u7528\u6237\u98CE\u9669\u8BF7\u6C42", {
           event: "user_risk_detected",
@@ -642,6 +664,44 @@ function createClawAegisRuntime(api, options) {
             toolResultSuspicious: currentState.toolResultSuspicious,
             skillRiskFlags: currentState.skillRiskFlags.length,
             riskySkills: currentState.riskySkills.length
+          });
+        }
+        if (dynamicPromptContext && currentState) {
+          const triggeredFlags = [];
+          if (currentState.userRiskFlags.length > 0) {
+            triggeredFlags.push(...currentState.userRiskFlags);
+          }
+          if (currentState.runtimeRiskFlags.length > 0) {
+            triggeredFlags.push(...currentState.runtimeRiskFlags);
+          }
+          if (currentState.toolResultSuspicious) {
+            triggeredFlags.push("tool_result_suspicious");
+          }
+          if (currentState.toolResultOversize) {
+            triggeredFlags.push("tool_result_oversize");
+          }
+          if (currentState.toolResultRiskFlags.length > 0) {
+            triggeredFlags.push(...currentState.toolResultRiskFlags);
+          }
+          if (currentState.riskySkills.length > 0) {
+            triggeredFlags.push(...currentState.riskySkills.map((s) => `risky_skill:${s}`));
+          }
+          emitDefenseEvent({
+            timestamp: now(),
+            defense: "prompt_guard",
+            result: "observed",
+            reason: `提示防护已注入安全规则: ${triggeredFlags.join(", ")}`,
+            details: {
+              hook: "before_prompt_build",
+              userRiskFlags: currentState.userRiskFlags,
+              runtimeRiskFlags: currentState.runtimeRiskFlags,
+              toolResultSuspicious: currentState.toolResultSuspicious,
+              toolResultOversize: currentState.toolResultOversize,
+              toolResultRiskFlags: currentState.toolResultRiskFlags,
+              skillRiskFlags: currentState.skillRiskFlags,
+              riskySkills: currentState.riskySkills
+            },
+            userInput: sessionKey ? state.peekLastUserInput(sessionKey) : void 0
           });
         }
         if (!prependSystemContext) {
@@ -843,6 +903,9 @@ function createClawAegisRuntime(api, options) {
               toolName: normalizedToolName,
               reason: evaluation.reason,
               details: evaluation.extra,
+              commandText,
+              toolParams: normalizedParams,
+              userInput: sessionKey ? state.peekLastUserInput(sessionKey) : void 0
             });
             logger.warn(strategy.blockedMessage ?? "claw-aegis: \u5DF2\u963B\u6B62\u98CE\u9669\u5DE5\u5177\u8C03\u7528", {
               event: "tool_call_blocked",
@@ -878,6 +941,9 @@ function createClawAegisRuntime(api, options) {
               toolName: normalizedToolName,
               reason: evaluation.reason ?? "unknown",
               details: evaluation.extra,
+              commandText,
+              toolParams: normalizedParams,
+              userInput: sessionKey ? state.peekLastUserInput(sessionKey) : void 0
             });
             logObservedToolCall({
               logger,

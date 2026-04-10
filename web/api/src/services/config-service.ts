@@ -87,6 +87,7 @@ export class ConfigService {
     const memoryGuardMode = readMode("memoryGuardEnabled", "memoryGuardMode");
     const loopGuardMode = readMode("loopGuardEnabled", "loopGuardMode");
     const exfiltrationGuardMode = readMode("exfiltrationGuardEnabled", "exfiltrationGuardMode");
+    const dispatchGuardMode = readMode("dispatchGuardEnabled", "dispatchGuardMode");
 
     return {
       allDefensesEnabled,
@@ -110,6 +111,9 @@ export class ConfigService {
       loopGuardMode,
       exfiltrationGuardEnabled: exfiltrationGuardMode !== "off",
       exfiltrationGuardMode,
+      toolCallEnforcementEnabled: readEnabled("toolCallEnforcementEnabled"),
+      dispatchGuardEnabled: dispatchGuardMode !== "off",
+      dispatchGuardMode,
       protectedPaths: normalizeStringArray(raw.protectedPaths),
       protectedSkills: raw.protectedSkills !== undefined
         ? normalizeStringArray(raw.protectedSkills)

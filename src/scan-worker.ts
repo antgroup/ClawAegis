@@ -108,15 +108,16 @@ export function scanSkillText(text: string): SkillScanResult {
 }
 
 if (parentPort) {
-  parentPort.on("message", (request: SkillScanRequest) => {
+  const port = parentPort;
+  port.on("message", (request: SkillScanRequest) => {
     try {
       const result = scanSkillText(request.text);
-      parentPort.postMessage({
+      port.postMessage({
         requestId: request.requestId,
         result,
       });
     } catch (error) {
-      parentPort.postMessage({
+      port.postMessage({
         requestId: request.requestId,
         error: error instanceof Error ? error.message : String(error),
       });

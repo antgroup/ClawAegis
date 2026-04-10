@@ -69,6 +69,11 @@
     "loopGuard": "Loop Guard",
     "exfiltrationGuard": "Exfiltration Guard",
     "skillScan": "Skill Scan",
+    "promptGuard": "Prompt Guard",
+    "userRiskScan": "User Risk Scan",
+    "dispatchGuard": "Dispatch Guard",
+    "toolResultScan": "Tool Result Scan",
+    "promptSelfBlock": "Prompt Self-Block",
     "configEvent": "Config",
     "allResults": "All Results",
     "blocked": "Blocked",
@@ -78,7 +83,16 @@
     "colDefense": "Defense",
     "colResult": "Result",
     "colTool": "Tool",
-    "colReason": "Reason"
+    "colReason": "Reason",
+    "colDetail": "Detail",
+    "labelCommand": "Command",
+    "labelParams": "Params",
+    "labelUserInput": "User Input",
+    "labelHook": "Hook",
+    "labelMode": "Mode",
+    "labelFlags": "Flags",
+    "labelModel": "Model",
+    "labelProvider": "Provider"
   },
   "skills": {
     "title": "Skill Scan Management",
@@ -91,7 +105,24 @@
     "colSize": "Size",
     "colScanned": "Scanned",
     "colActions": "Actions",
-    "removeTitle": "Remove from trusted list"
+    "removeTitle": "Remove from trusted list",
+    "tabScanResults": "Scan Results",
+    "tabTrustedSkills": "Trusted Skills",
+    "totalScans": "{{count}} scan records",
+    "noScans": "No scan records yet",
+    "filterAll": "All",
+    "filterTrusted": "Trusted",
+    "filterRisky": "Risky",
+    "colSkillId": "Skill ID",
+    "colResult": "Result",
+    "colFindings": "Findings",
+    "colPhase": "Phase",
+    "colTime": "Time",
+    "trusted": "Trusted",
+    "risky": "Risky",
+    "phaseStartup": "Startup",
+    "phaseTurnReview": "Turn Review",
+    "noFindings": "No findings"
   },
   "common": {
     "add": "Add"
@@ -159,6 +190,14 @@
     "promptGuard": {
       "label": "Inject Prompt Guards",
       "help": "Inject static and one-shot safety reminders during before_prompt_build."
+    },
+    "dispatchGuard": {
+      "label": "Dispatch Guard",
+      "help": "Intercept dangerous operation requests before they reach the AI agent and before LLM replies, including openclaw CLI commands, protected path destruction, and tool call bypass attempts."
+    },
+    "toolCallEnforcement": {
+      "label": "Enforce Tool Call Only",
+      "help": "Inject prompt rules requiring all destructive operations to go through standard tool calls, preventing bypass of security hooks."
     }
   }
 }

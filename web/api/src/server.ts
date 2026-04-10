@@ -7,9 +7,11 @@ import { createConfigRouter } from "./routes/config.js";
 import { createStatusRouter } from "./routes/status.js";
 import { createEventsRouter } from "./routes/events.js";
 import { createSkillsRouter } from "./routes/skills.js";
+import { createSkillScansRouter } from "./routes/skill-scans.js";
 import { ConfigService } from "./services/config-service.js";
 import { StateService } from "./services/state-service.js";
 import { EventService } from "./services/event-service.js";
+import { SkillScanEventService } from "./services/skill-scan-event-service.js";
 import { FileWatcher } from "./services/file-watcher.js";
 
 export type ServerOptions = {
@@ -26,7 +28,8 @@ export function createServer(options: ServerOptions) {
   const configService = new ConfigService(options.configDir);
   const stateService = new StateService(options.stateDir);
   const eventService = new EventService();
-  const fileWatcher = new FileWatcher(configService, stateService, eventService);
+  const skillScanEventService = new SkillScanEventService();
+  const fileWatcher = new FileWatcher(configService, stateService, eventService, skillScanEventService);
 
   fileWatcher.start().catch((err) =>
     console.error("[claw-aegis-web] FileWatcher start error:", err),
@@ -36,6 +39,7 @@ export function createServer(options: ServerOptions) {
   app.use(`${API_PREFIX}/status`, createStatusRouter(configService, stateService));
   app.use(`${API_PREFIX}/events`, createEventsRouter(eventService));
   app.use(`${API_PREFIX}/skills`, createSkillsRouter(stateService, eventService));
+  app.use(`${API_PREFIX}/skill-scans`, createSkillScansRouter(skillScanEventService));
 
   app.get(`${API_PREFIX}/health`, (_req, res) => {
     res.json({ status: "ok", version: "0.1.0" });

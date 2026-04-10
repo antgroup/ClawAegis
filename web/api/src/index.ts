@@ -7,7 +7,10 @@ const pluginRoot = path.resolve(__dirname, "..", "..", "..");
 
 const port = parseInt(process.env.AEGIS_PORT ?? "3800", 10);
 const configDir = process.env.AEGIS_CONFIG_DIR ?? pluginRoot;
-const stateDir = process.env.AEGIS_STATE_DIR ?? "";
+const defaultStateDir = pluginRoot.includes(path.join(".openclaw", "extensions"))
+  ? path.resolve(pluginRoot, "..", "..", "plugins", "claw-aegis")
+  : "";
+const stateDir = process.env.AEGIS_STATE_DIR ?? defaultStateDir;
 
 for (const arg of process.argv.slice(2)) {
   const [key, value] = arg.split("=");

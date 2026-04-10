@@ -85,6 +85,7 @@ class ClawAegisState {
   loopCounters = /* @__PURE__ */ new Map();
   sessionSecrets = /* @__PURE__ */ new Map();
   sessionPrompts = /* @__PURE__ */ new Map();
+  lastUserInputs = /* @__PURE__ */ new Map();
   runToolCalls = /* @__PURE__ */ new Map();
   runSecuritySignals = /* @__PURE__ */ new Map();
   trustedSkills = /* @__PURE__ */ new Map();
@@ -124,6 +125,11 @@ class ClawAegisState {
     for (const [sessionKey, entry] of this.sessionPrompts) {
       if (now - entry.updatedAt > TURN_STATE_TTL_MS) {
         this.sessionPrompts.delete(sessionKey);
+      }
+    }
+    for (const [sessionKey, entry] of this.lastUserInputs) {
+      if (now - entry.updatedAt > TURN_STATE_TTL_MS) {
+        this.lastUserInputs.delete(sessionKey);
       }
     }
     for (const [runId, entry] of this.runToolCalls) {
@@ -329,6 +335,22 @@ class ClawAegisState {
     }
     entry.updatedAt = now;
     return { ...entry };
+  }
+  noteLastUserInput(sessionKey, content) {
+    const now = this.now();
+    this.cleanupExpiredState(now);
+    this.lastUserInputs.set(sessionKey, {
+      value: content.slice(0, 500),
+      updatedAt: now
+    });
+  }
+  peekLastUserInput(sessionKey) {
+    const now = this.now();
+    this.cleanupExpiredState(now);
+    const entry = this.lastUserInputs.get(sessionKey);
+    if (!entry) return void 0;
+    entry.updatedAt = now;
+    return entry.value;
   }
   noteRunToolCall(runId, record) {
     const now = this.now();

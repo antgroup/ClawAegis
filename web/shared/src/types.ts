@@ -24,6 +24,9 @@ export type AegisConfig = {
   loopGuardMode: DefenseMode;
   exfiltrationGuardEnabled: boolean;
   exfiltrationGuardMode: DefenseMode;
+  toolCallEnforcementEnabled: boolean;
+  dispatchGuardEnabled: boolean;
+  dispatchGuardMode: DefenseMode;
   protectedPaths: string[];
   protectedSkills: string[];
   protectedPlugins: string[];
@@ -71,10 +74,33 @@ export type SecurityEvent = {
   toolName?: string;
   reason?: string;
   details?: Record<string, unknown>;
+  commandText?: string;
+  toolParams?: Record<string, unknown>;
+  userInput?: string;
 };
 
 export type EventsResponse = {
   events: SecurityEvent[];
+  total: number;
+};
+
+// ---- Skill Scan Events ----
+
+export type SkillScanEvent = {
+  id: string;
+  timestamp: number;
+  skillId: string;
+  path: string;
+  hash: string;
+  size: number;
+  sourceRoot?: string;
+  trusted: boolean;
+  findings: string[];
+  phase: string;
+};
+
+export type SkillScanEventsResponse = {
+  events: SkillScanEvent[];
   total: number;
 };
 

@@ -27,6 +27,7 @@ export const SKILL_SCAN_TARGET_FILENAME = "SKILL.md";
 export const TRUSTED_SKILLS_FILENAME = "trusted-skills.json";
 export const SELF_INTEGRITY_FILENAME = "self-integrity.json";
 export const DEFENSE_EVENTS_FILENAME = "defense-events.jsonl";
+export const SKILL_SCAN_EVENTS_FILENAME = "skill-scan-events.jsonl";
 
 export const BLOCK_REASON_PROTECTED_PATH =
   "安全限制：禁止访问、查询、修改、删除、关闭或绕过受保护的敏感路径、配置、重要 skill 或 claw-aegis 插件目录。";
@@ -39,6 +40,8 @@ export const BLOCK_REASON_MEMORY_WRITE = "安全限制：已拒绝本次高风�
 export const BLOCK_REASON_LOOP = "安全限制：检测到重复高风险工具调用，已停止本次操作。";
 export const BLOCK_REASON_EXFILTRATION_CHAIN =
   "安全限制：检测到疑似 SSRF 或数据外泄工具调用链，已阻止本次出站请求。";
+export const BLOCK_REASON_DISPATCH_GUARD =
+  "安全限制：检测到针对受保护资源的危险操作请求，已拦截。所有破坏性操作必须通过标准 tool call 执行。";
 
 export type DefenseMode = (typeof DEFENSE_MODES)[number];
 
@@ -64,6 +67,9 @@ export type ClawAegisPluginConfig = {
   loopGuardMode: DefenseMode;
   exfiltrationGuardEnabled: boolean;
   exfiltrationGuardMode: DefenseMode;
+  toolCallEnforcementEnabled: boolean;
+  dispatchGuardEnabled: boolean;
+  dispatchGuardMode: DefenseMode;
   protectedPaths: string[];
   protectedSkills: string[];
   protectedPlugins: string[];
@@ -87,8 +93,8 @@ export const clawAegisPluginConfigSchema = {
   type: "object",
   additionalProperties: false,
   properties: {
-    allDefensesEnabled: true,
-    defaultBlockingMode: 'observe',
+    allDefensesEnabled: defaultEnabledBooleanSchema,
+    defaultBlockingMode: defaultDefenseModeSchema,
     selfProtectionEnabled: defaultEnabledBooleanSchema,
     selfProtectionMode: defaultDefenseModeSchema,
     commandBlockEnabled: defaultEnabledBooleanSchema,
@@ -108,6 +114,9 @@ export const clawAegisPluginConfigSchema = {
     loopGuardMode: defaultDefenseModeSchema,
     exfiltrationGuardEnabled: defaultEnabledBooleanSchema,
     exfiltrationGuardMode: defaultDefenseModeSchema,
+    toolCallEnforcementEnabled: defaultEnabledBooleanSchema,
+    dispatchGuardEnabled: defaultEnabledBooleanSchema,
+    dispatchGuardMode: defaultDefenseModeSchema,
     protectedPaths: {
       type: "array",
       items: { type: "string" },
@@ -115,7 +124,6 @@ export const clawAegisPluginConfigSchema = {
     protectedSkills: {
       type: "array",
       items: { type: "string" },
-      default: ["ClawHub"],
     },
     protectedPlugins: {
       type: "array",
@@ -221,6 +229,18 @@ export const clawAegisPluginUiHints = {
     label: "Exfiltration Guard Mode",
     help: 'Detailed mode for outbound chain detection. "observe" records the chain without blocking.',
   },
+  toolCallEnforcementEnabled: {
+    label: "Enforce Tool Call Only",
+    help: "Inject prompt rules requiring all destructive operations (file ops, CLI commands, network, process spawning) to go through standard tool calls only.",
+  },
+  dispatchGuardEnabled: {
+    label: "Guard Message Dispatch",
+    help: "Intercept user messages and LLM replies before agent processing to block dangerous operations targeting protected resources.",
+  },
+  dispatchGuardMode: {
+    label: "Dispatch Guard Mode",
+    help: 'Detailed mode for dispatch guard. "enforce" blocks dangerous messages, "observe" only logs.',
+  },
   protectedPaths: {
     label: "Protected Paths",
     help: "Additional absolute or resolved paths that should be treated as protected targets.",
@@ -323,6 +343,8 @@ function readEnabledFlag(
     | "promptGuardEnabled"
     | "loopGuardEnabled"
     | "exfiltrationGuardEnabled"
+    | "toolCallEnforcementEnabled"
+    | "dispatchGuardEnabled"
   >,
   allDefensesEnabled: boolean,
 ): boolean {
@@ -345,6 +367,7 @@ function readDefenseMode(
       | "memoryGuardEnabled"
       | "loopGuardEnabled"
       | "exfiltrationGuardEnabled"
+      | "dispatchGuardEnabled"
     >;
     modeKey: keyof Pick<
       ClawAegisPluginConfig,
@@ -355,6 +378,7 @@ function readDefenseMode(
       | "memoryGuardMode"
       | "loopGuardMode"
       | "exfiltrationGuardMode"
+      | "dispatchGuardMode"
     >;
     defaultMode: DefenseMode;
     allDefensesEnabled: boolean;
@@ -415,6 +439,12 @@ export function resolveClawAegisPluginConfig(api: OpenClawPluginApi): ClawAegisP
     defaultMode: defaultBlockingMode,
     allDefensesEnabled,
   });
+  const dispatchGuardMode = readDefenseMode(raw, {
+    enabledKey: "dispatchGuardEnabled",
+    modeKey: "dispatchGuardMode",
+    defaultMode: defaultBlockingMode,
+    allDefensesEnabled,
+  });
   return {
     allDefensesEnabled,
     defaultBlockingMode,
@@ -437,6 +467,9 @@ export function resolveClawAegisPluginConfig(api: OpenClawPluginApi): ClawAegisP
     loopGuardMode,
     exfiltrationGuardEnabled: exfiltrationGuardMode !== "off",
     exfiltrationGuardMode,
+    toolCallEnforcementEnabled: readEnabledFlag(raw, "toolCallEnforcementEnabled", allDefensesEnabled),
+    dispatchGuardEnabled: dispatchGuardMode !== "off",
+    dispatchGuardMode,
     protectedPaths: normalizeStringList(raw.protectedPaths, api.resolvePath),
     protectedSkills: normalizeIdentifierList(raw.protectedSkills),
     protectedPlugins: normalizeIdentifierList(raw.protectedPlugins),

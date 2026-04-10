@@ -1,6 +1,11 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { TRUSTED_SKILLS_FILENAME, SELF_INTEGRITY_FILENAME, DEFENSE_EVENTS_FILENAME } from "@claw-aegis-web/shared";
+import {
+  TRUSTED_SKILLS_FILENAME,
+  SELF_INTEGRITY_FILENAME,
+  DEFENSE_EVENTS_FILENAME,
+  SKILL_SCAN_EVENTS_FILENAME,
+} from "@claw-aegis-web/shared";
 import type { TrustedSkillInfo, SelfIntegrityStatus } from "@claw-aegis-web/shared";
 
 type PersistedTrustedSkillsFile = {
@@ -41,6 +46,10 @@ export class StateService {
 
   getDefenseEventsPath(): string {
     return path.join(this.stateDir, DEFENSE_EVENTS_FILENAME);
+  }
+
+  getSkillScanEventsPath(): string {
+    return path.join(this.stateDir, SKILL_SCAN_EVENTS_FILENAME);
   }
 
   async getTrustedSkills(): Promise<TrustedSkillInfo[]> {

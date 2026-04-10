@@ -1,6 +1,27 @@
-import type { OpenClawPluginApi, OpenClawPluginConfigSchema } from "openclaw/plugin-sdk/core";
-
-export type { OpenClawPluginApi, OpenClawPluginConfigSchema };
+// Structural stand-ins for the openclaw plugin SDK types.
+// The real module (openclaw/plugin-sdk/core) is only available at runtime inside
+// the openclaw host process. These minimal types are sufficient for standalone
+// compilation and testing.
+export interface OpenClawPluginApi {
+  rootDir?: string;
+  pluginConfig?: Record<string, unknown>;
+  config?: Record<string, unknown>;
+  logger: {
+    debug?: (msg: string) => void;
+    info: (msg: string) => void;
+    warn: (msg: string) => void;
+    error: (msg: string) => void;
+  };
+  runtime: {
+    state: {
+      resolveStateDir: () => string;
+    };
+  };
+  on: (hookName: string, handler: (...args: any[]) => any) => void;
+  getPluginConfig: (pluginId: string) => Record<string, unknown> | undefined;
+  resolvePath: (p: string) => string;
+}
+export type OpenClawPluginConfigSchema = Record<string, unknown>;
 
 export type PluginHookMessageContext = {
   sessionKey?: string;

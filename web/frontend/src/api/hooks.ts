@@ -54,3 +54,11 @@ export function useRemoveSkill() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["skills"] }),
   });
 }
+
+export function useSkillScans(params?: Record<string, string>) {
+  return useQuery({
+    queryKey: ["skillScans", params],
+    queryFn: () => api.getSkillScans(params),
+    refetchInterval: 10_000,
+  });
+}

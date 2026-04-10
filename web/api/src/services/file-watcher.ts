@@ -1,10 +1,14 @@
 import { watch, type FSWatcher } from "chokidar";
 import { promises as fs } from "node:fs";
-import { DEFENSE_EVENTS_FILENAME } from "@claw-aegis-web/shared";
-import type { SecurityEvent } from "@claw-aegis-web/shared";
+import {
+  DEFENSE_EVENTS_FILENAME,
+  SKILL_SCAN_EVENTS_FILENAME,
+} from "@claw-aegis-web/shared";
+import type { SecurityEvent, SkillScanEvent } from "@claw-aegis-web/shared";
 import type { ConfigService } from "./config-service.js";
 import type { StateService } from "./state-service.js";
 import type { EventService } from "./event-service.js";
+import type { SkillScanEventService } from "./skill-scan-event-service.js";
 
 type RawDefenseEvent = {
   timestamp: number;
@@ -13,6 +17,21 @@ type RawDefenseEvent = {
   toolName?: string;
   reason?: string;
   details?: Record<string, unknown>;
+  commandText?: string;
+  toolParams?: Record<string, unknown>;
+  userInput?: string;
+};
+
+type RawSkillScanEvent = {
+  timestamp: number;
+  skillId: string;
+  path: string;
+  hash: string;
+  size: number;
+  sourceRoot?: string;
+  trusted: boolean;
+  findings: string[];
+  phase: string;
 };
 
 function isValidResult(v: unknown): v is SecurityEvent["result"] {
@@ -22,11 +41,13 @@ function isValidResult(v: unknown): v is SecurityEvent["result"] {
 export class FileWatcher {
   private watcher: FSWatcher | null = null;
   private eventsFileOffset = 0;
+  private skillScanEventsFileOffset = 0;
 
   constructor(
     private readonly configService: ConfigService,
     private readonly stateService: StateService,
     private readonly eventService: EventService,
+    private readonly skillScanEventService: SkillScanEventService,
   ) {}
 
   async start(): Promise<void> {
@@ -37,9 +58,11 @@ export class FileWatcher {
         this.stateService.getTrustedSkillsPath(),
         this.stateService.getSelfIntegrityPath(),
         this.stateService.getDefenseEventsPath(),
+        this.stateService.getSkillScanEventsPath(),
       );
 
       await this.loadExistingEvents();
+      await this.loadExistingSkillScanEvents();
     }
 
     this.watcher = watch(paths, {
@@ -72,6 +95,8 @@ export class FileWatcher {
         });
       } else if (basename === DEFENSE_EVENTS_FILENAME) {
         this.readNewEvents().catch(() => {});
+      } else if (basename === SKILL_SCAN_EVENTS_FILENAME) {
+        this.readNewSkillScanEvents().catch(() => {});
       }
     });
   }
@@ -140,6 +165,80 @@ export class FileWatcher {
         toolName: raw.toolName,
         reason: raw.reason,
         details: raw.details,
+        commandText: raw.commandText,
+        toolParams: raw.toolParams,
+        userInput: raw.userInput,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private async loadExistingSkillScanEvents(): Promise<void> {
+    const eventsPath = this.stateService.getSkillScanEventsPath();
+    try {
+      const content = await fs.readFile(eventsPath, "utf8");
+      this.skillScanEventsFileOffset = Buffer.byteLength(content, "utf8");
+      const lines = content.trim().split("\n").filter(Boolean);
+      const recent = lines.slice(-1000);
+      for (const line of recent) {
+        const event = this.parseSkillScanLine(line);
+        if (event) {
+          this.skillScanEventService.addEvent(event);
+        }
+      }
+    } catch {
+      this.skillScanEventsFileOffset = 0;
+    }
+  }
+
+  private async readNewSkillScanEvents(): Promise<void> {
+    const eventsPath = this.stateService.getSkillScanEventsPath();
+    try {
+      const stat = await fs.stat(eventsPath);
+      if (stat.size <= this.skillScanEventsFileOffset) return;
+
+      const fd = await fs.open(eventsPath, "r");
+      try {
+        const buf = Buffer.alloc(stat.size - this.skillScanEventsFileOffset);
+        await fd.read(buf, 0, buf.length, this.skillScanEventsFileOffset);
+        this.skillScanEventsFileOffset = stat.size;
+        const chunk = buf.toString("utf8");
+        const lines = chunk.trim().split("\n").filter(Boolean);
+        for (const line of lines) {
+          const event = this.parseSkillScanLine(line);
+          if (event) {
+            this.skillScanEventService.addEvent(event);
+          }
+        }
+      } finally {
+        await fd.close();
+      }
+    } catch {
+      // ignore read errors
+    }
+  }
+
+  private parseSkillScanLine(line: string): Omit<SkillScanEvent, "id"> | null {
+    try {
+      const raw = JSON.parse(line) as RawSkillScanEvent;
+      if (
+        typeof raw.timestamp !== "number" ||
+        typeof raw.skillId !== "string" ||
+        typeof raw.path !== "string"
+      ) {
+        return null;
+      }
+      return {
+        timestamp: raw.timestamp,
+        skillId: raw.skillId,
+        path: raw.path,
+        hash: raw.hash,
+        size: raw.size,
+        sourceRoot: raw.sourceRoot,
+        trusted: !!raw.trusted,
+        findings: Array.isArray(raw.findings) ? raw.findings : [],
+        phase: raw.phase ?? "unknown",
       };
     } catch {
       return null;

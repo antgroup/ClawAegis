@@ -27,4 +27,8 @@ export const api = {
   getSkills: () => request<import("@claw-aegis-web/shared").SkillsResponse>("/skills"),
   removeSkill: (path: string) =>
     request<{ removed: boolean }>(`/skills/${encodeURIComponent(path)}`, { method: "DELETE" }),
+  getSkillScans: (params?: Record<string, string>) => {
+    const qs = params ? "?" + new URLSearchParams(params).toString() : "";
+    return request<import("@claw-aegis-web/shared").SkillScanEventsResponse>(`/skill-scans${qs}`);
+  },
 };
