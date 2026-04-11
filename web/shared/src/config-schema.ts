@@ -66,7 +66,7 @@ export const CONFIG_DEFAULTS = {
   dispatchGuardEnabled: true,
   dispatchGuardMode: "enforce" as DefenseMode,
   protectedPaths: [] as string[],
-  protectedSkills: ["ClawHub"] as string[],
+  protectedSkills: [] as string[],
   protectedPlugins: [] as string[],
   startupSkillScan: true,
 };
