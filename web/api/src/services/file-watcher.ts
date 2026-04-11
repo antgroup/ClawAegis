@@ -71,7 +71,7 @@ export class FileWatcher {
     });
 
     this.watcher.on("change", (filePath: string) => {
-      const basename = filePath.split("/").pop() ?? "";
+      const basename = path.basename(filePath);
       if (basename === "openclaw.plugin.json") {
         this.eventService.addEvent({
           timestamp: Date.now(),
