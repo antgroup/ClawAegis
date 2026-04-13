@@ -166,25 +166,25 @@ npm run dev
 **Dashboard** — Defense status overview, 12-defense status matrix, self-integrity status, Trusted Skills count, and recent security events.
 
 <p align="center">
-  <img src="docs/webui-dashboard.png" alt="WebUI Dashboard" width="90%" />
+  <img src="docs/webui-dashboard-en.png" alt="WebUI Dashboard" width="90%" />
 </p>
 
 **Config** — Master controls (global toggle + default blocking mode), per-defense cards, Protected Assets tag editor, and Advanced options. Supports dirty-state tracking with Save / Reset to Defaults.
 
 <p align="center">
-  <img src="docs/webui-config.png" alt="WebUI Config" width="90%" />
+  <img src="docs/webui-config-en.png" alt="WebUI Config" width="90%" />
 </p>
 
 **Events** — Security event log with filtering by defense type and result (blocked / observed / clear), auto-refreshing every 10 seconds.
 
 <p align="center">
-  <img src="docs/webui-events.png" alt="WebUI Events" width="90%" />
+  <img src="docs/webui-events-en.png" alt="WebUI Events" width="90%" />
 </p>
 
 **Skills** — Trusted Skills list (path, hash, size, scan time) with manual removal support.
 
 <p align="center">
-  <img src="docs/webui-skills.png" alt="WebUI Skills" width="90%" />
+  <img src="docs/webui-skills-en.png" alt="WebUI Skills" width="90%" />
 </p>
 
 ### Configuration Parameters

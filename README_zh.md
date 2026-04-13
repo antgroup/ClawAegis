@@ -163,25 +163,25 @@ npm run dev
 **Dashboard（仪表盘）** — 防御状态统计卡片、12项防御机制状态矩阵、插件自完整性状态、Trusted Skills计数、最近安全事件列表。
 
 <p align="center">
-  <img src="docs/webui-dashboard.png" alt="WebUI 仪表盘" width="90%" />
+  <img src="docs/webui-dashboard-zh.png" alt="WebUI 仪表盘" width="90%" />
 </p>
 
 **Config（配置编辑器）** — Master Controls（全局防御开关 + 默认拦截模式）、每项防御独立卡片、Protected Assets标签式编辑器、可折叠高级选项。支持脏状态追踪，Save / Reset to Defaults按钮。
 
 <p align="center">
-  <img src="docs/webui-config.png" alt="WebUI 配置编辑器" width="90%" />
+  <img src="docs/webui-config-zh.png" alt="WebUI 配置编辑器" width="90%" />
 </p>
 
 **Events（安全事件日志）** — 支持按防御类型和结果（blocked / observed / clear）筛选，自动每10秒刷新。
 
 <p align="center">
-  <img src="docs/webui-events.png" alt="WebUI 事件日志" width="90%" />
+  <img src="docs/webui-events-zh.png" alt="WebUI 事件日志" width="90%" />
 </p>
 
 **Skills（Skill扫描管理）** — Trusted Skills列表（路径、哈希、大小、扫描时间），支持手动移除。
 
 <p align="center">
-  <img src="docs/webui-skills.png" alt="WebUI Skill管理" width="90%" />
+  <img src="docs/webui-skills-zh.png" alt="WebUI Skill管理" width="90%" />
 </p>
 
 ### 配置参数说明
