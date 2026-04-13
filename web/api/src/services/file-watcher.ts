@@ -1,4 +1,5 @@
 import { watch, type FSWatcher } from "chokidar";
+import path from "node:path";
 import { promises as fs } from "node:fs";
 import {
   DEFENSE_EVENTS_FILENAME,
