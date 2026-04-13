@@ -87,6 +87,18 @@
       "label": "Exfiltration Guard Mode",
       "help": "Detailed mode for outbound chain detection. \"observe\" records the chain without blocking."
     },
+    "toolCallEnforcementEnabled": {
+      "label": "Enforce Tool Call Only",
+      "help": "Inject prompt rules requiring all destructive operations (file ops, CLI commands, network, process spawning) to go through standard tool calls only."
+    },
+    "dispatchGuardEnabled": {
+      "label": "Guard Message Dispatch",
+      "help": "Intercept user messages and LLM replies before agent processing to block dangerous operations targeting protected resources."
+    },
+    "dispatchGuardMode": {
+      "label": "Dispatch Guard Mode",
+      "help": "Detailed mode for dispatch guard. \"enforce\" blocks dangerous messages, \"observe\" only logs."
+    },
     "protectedPaths": {
       "label": "Protected Paths",
       "help": "Additional absolute or resolved paths that should be treated as protected targets.",
@@ -243,6 +255,23 @@
         "default": true
       },
       "exfiltrationGuardMode": {
+        "type": "string",
+        "enum": [
+          "off",
+          "observe",
+          "enforce"
+        ],
+        "default": "enforce"
+      },
+      "toolCallEnforcementEnabled": {
+        "type": "boolean",
+        "default": true
+      },
+      "dispatchGuardEnabled": {
+        "type": "boolean",
+        "default": true
+      },
+      "dispatchGuardMode": {
         "type": "string",
         "enum": [
           "off",

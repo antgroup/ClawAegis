@@ -316,6 +316,7 @@ class SkillScanService {
           const result2 = await this.executeScan(request, "turn_review");
           const assessment = this.buildAssessment(request, result2, prepared.skillId);
           this.params.state.rememberSkillAssessment(assessment);
+          this.emitScanComplete(assessment, "turn_review");
           if (assessment.trusted) {
             persistTrustedSkillsNeeded = true;
             return;
@@ -602,6 +603,19 @@ class SkillScanService {
     void this.processNext();
     return { status: "queued" };
   }
+  emitScanComplete(assessment, phase) {
+    this.params.onScanComplete?.({
+      timestamp: assessment.scannedAt,
+      skillId: assessment.skillId,
+      path: assessment.path,
+      hash: assessment.hash,
+      size: assessment.size,
+      sourceRoot: assessment.sourceRoot,
+      trusted: assessment.trusted,
+      findings: assessment.findings,
+      phase
+    });
+  }
   hashText(text) {
     return createHash("sha256").update(text).digest("hex");
   }
@@ -635,6 +649,7 @@ class SkillScanService {
       const durationMs = this.now() - startedAt;
       const assessment = this.buildAssessment(next, result, extractSkillId(next.path, next.text));
       this.params.state.rememberSkillAssessment(assessment);
+      this.emitScanComplete(assessment, "startup");
       if (assessment.trusted) {
         await this.params.state.persistTrustedSkills();
       }

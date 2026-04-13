@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { AgentMessage } from "@mariozechner/pi-agent-core";
+/** Structural stand-in for the runtime AgentMessage type (avoids hard dep on @mariozechner/pi-agent-core). */
+type AgentMessage = Record<string, unknown>;
 import {
   BLOCK_REASON_EXFILTRATION_CHAIN,
   BLOCK_REASON_HIGH_RISK_OPERATION,
@@ -32,6 +33,8 @@ import type {
   UserRiskMatch,
 } from "./types.js";
 import {
+  AEGIS_REFUSAL_OUTPUT_RULE,
+  AEGIS_REFUSAL_PREFIX,
   PROMPT_GUARD_STRATEGIES,
   TOOL_RESULT_RISK_RULES,
   USER_RISK_RULES,
@@ -228,6 +231,17 @@ export const STATIC_SYSTEM_EXTERNAL_DATA_RULE =
 
 export const STATIC_SYSTEM_EXTERNAL_MARKER_RULE =
   PROMPT_GUARD_STRATEGIES.staticSystem.externalMarker;
+
+export { AEGIS_REFUSAL_PREFIX };
+
+export const STATIC_SYSTEM_TOOL_CALL_ENFORCEMENT_RULE =
+  PROMPT_GUARD_STRATEGIES.staticSystem.toolCallEnforcement;
+
+export const STATIC_SYSTEM_PROTECTED_PATH_ENFORCEMENT_RULE =
+  PROMPT_GUARD_STRATEGIES.staticSystem.protectedPathEnforcement;
+
+export const STATIC_SYSTEM_DESTRUCTIVE_OP_GUARD_RULE =
+  PROMPT_GUARD_STRATEGIES.staticSystem.destructiveOpGuard;
 
 export const TOOL_RESULT_DATA_RULE =
   PROMPT_GUARD_STRATEGIES.dynamic.toolResultData;
@@ -2110,8 +2124,12 @@ export function detectUserRiskFlags(text: string): UserRiskMatch {
   return { flags: [...new Set(flags)] };
 }
 
-export function buildStaticSystemContext(params?: { selfProtectionEnabled?: boolean }): string {
-  const lines = [
+export function buildStaticSystemContext(params?: {
+  selfProtectionEnabled?: boolean;
+  toolCallEnforcementEnabled?: boolean;
+  protectedPaths?: string[];
+}): string {
+  const lines: string[] = [
     STATIC_SYSTEM_OVERREACH_RULE,
     STATIC_SYSTEM_EXTERNAL_DATA_RULE,
     STATIC_SYSTEM_EXTERNAL_MARKER_RULE,
@@ -2120,6 +2138,20 @@ export function buildStaticSystemContext(params?: { selfProtectionEnabled?: bool
     lines.unshift(STATIC_SYSTEM_SELF_PROTECTION_RULE);
     lines.splice(2, 0, STATIC_SYSTEM_DISABLE_PLUGIN_RULE);
   }
+  if (params?.toolCallEnforcementEnabled !== false) {
+    lines.push(STATIC_SYSTEM_TOOL_CALL_ENFORCEMENT_RULE);
+    lines.push(STATIC_SYSTEM_DESTRUCTIVE_OP_GUARD_RULE);
+    const protectedPaths = params?.protectedPaths;
+    if (protectedPaths && protectedPaths.length > 0) {
+      lines.push(
+        STATIC_SYSTEM_PROTECTED_PATH_ENFORCEMENT_RULE.replace(
+          "{protectedPaths}",
+          protectedPaths.join("、"),
+        ),
+      );
+    }
+  }
+  lines.push(AEGIS_REFUSAL_OUTPUT_RULE);
   return lines.join("\n");
 }
 
@@ -2809,5 +2841,104 @@ export function scanToolResultText(text: string, oversize = false): ToolResultSc
     riskFlags: uniqueRiskFlags,
     suspicious,
     oversize,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Dispatch Guard: detect dangerous operations in user messages
+// ---------------------------------------------------------------------------
+
+const DISPATCH_GUARD_OPENCLAW_CLI_PATTERNS = [
+  /\bopenclaw\s+(?:reset|uninstall|remove)\b/i,
+  /\bopenclaw\s+skills?\s+(?:update|delete|remove|uninstall|sync)\b/i,
+  /\bopenclaw\s+plugins?\s+(?:remove|uninstall|delete)\b/i,
+  /\bopenclaw\s+(?:shutdown|stop|kill|restart)\b/i,
+];
+
+const DISPATCH_GUARD_DESTRUCTIVE_PATH_PATTERNS = [
+  /(?:rm|rmdir|unlink|del(?:ete)?)\s+(?:-[a-zA-Z]*\s+)*(?:\/\S*\.openclaw\S*|~\/\.openclaw\S*)/i,
+  /(?:rm|rmdir|unlink|del(?:ete)?)\s+(?:-[a-zA-Z]*\s+)*(?:\/\S*\/skills\/\S+)/i,
+  /(?:rm|rmdir|unlink|del(?:ete)?)\s+(?:-[a-zA-Z]*\s+)*(?:\/\S*\/plugins\/\S+)/i,
+  /(?:rm|rmdir|unlink|del(?:ete)?)\s+(?:-[a-zA-Z]*\s+)*(?:\/\S*\/extensions\/\S+)/i,
+];
+
+const DISPATCH_GUARD_DESTRUCTIVE_INTENT_PATTERNS = [
+  /(?:删除|移除|卸载|清除|干掉|去掉|移走|抹掉)\s*(?:skill|技能|插件|plugin)/i,
+  /(?:删除|移除|卸载|清除|干掉|去掉|移走|抹掉)\s*(?:\.openclaw|openclaw)\s*(?:配置|目录|文件夹|数据)/i,
+  /(?:reset|重置)\s*(?:workspace|工作区|工作空间)/i,
+  /(?:清空|清理|wipe|purge)\s*(?:workspace|skills|plugins|工作区|技能|插件)/i,
+];
+
+const DISPATCH_GUARD_BYPASS_TOOL_CALL_PATTERNS = [
+  /(?:不要|不用|跳过|绕过|别走)\s*(?:tool\s*call|工具调用|hook)/i,
+  /(?:直接|内部|内建)\s*(?:执行|运行|调用|删除|操作)/i,
+  /(?:bypass|skip|avoid)\s+(?:tool\s*call|hook|guard|protection)/i,
+];
+
+export type DispatchGuardResult = {
+  blocked: boolean;
+  reason?: string;
+  flags: string[];
+};
+
+export function detectDispatchGuardViolation(
+  text: string,
+  protectedPaths?: string[],
+): DispatchGuardResult {
+  if (!text?.trim()) {
+    return { blocked: false, flags: [] };
+  }
+  const flags: string[] = [];
+
+  for (const pattern of DISPATCH_GUARD_OPENCLAW_CLI_PATTERNS) {
+    if (pattern.test(text)) {
+      flags.push("openclaw-cli-command");
+      break;
+    }
+  }
+
+  for (const pattern of DISPATCH_GUARD_DESTRUCTIVE_PATH_PATTERNS) {
+    if (pattern.test(text)) {
+      flags.push("destructive-path-command");
+      break;
+    }
+  }
+
+  for (const pattern of DISPATCH_GUARD_DESTRUCTIVE_INTENT_PATTERNS) {
+    if (pattern.test(text)) {
+      flags.push("destructive-intent");
+      break;
+    }
+  }
+
+  for (const pattern of DISPATCH_GUARD_BYPASS_TOOL_CALL_PATTERNS) {
+    if (pattern.test(text)) {
+      flags.push("bypass-tool-call");
+      break;
+    }
+  }
+
+  if (protectedPaths && protectedPaths.length > 0) {
+    const lowerText = text.toLowerCase();
+    for (const protectedPath of protectedPaths) {
+      if (lowerText.includes(protectedPath.toLowerCase())) {
+        const hasDestructiveVerb =
+          /(?:rm|delete|remove|unlink|rmdir|移除|删除|卸载|清除|覆盖|移走|重命名)/i.test(text);
+        if (hasDestructiveVerb) {
+          flags.push("protected-path-destructive");
+          break;
+        }
+      }
+    }
+  }
+
+  const uniqueFlags = [...new Set(flags)];
+  if (uniqueFlags.length === 0) {
+    return { blocked: false, flags: [] };
+  }
+  return {
+    blocked: true,
+    reason: `检测到危险操作意图: ${uniqueFlags.join(", ")}`,
+    flags: uniqueFlags,
   };
 }

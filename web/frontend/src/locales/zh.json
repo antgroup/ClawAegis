@@ -1,0 +1,203 @@
+{
+  "sidebar": {
+    "title": "Claw Aegis",
+    "subtitle": "安全仪表盘",
+    "dashboard": "仪表盘",
+    "config": "配置",
+    "events": "事件",
+    "skills": "技能"
+  },
+  "dashboard": {
+    "title": "安全仪表盘",
+    "loading": "加载仪表盘中...",
+    "configUpdated": "配置更新于：",
+    "trustedSkills": "受信任技能：",
+    "recentEvents": "最近事件",
+    "noDetails": "无详情",
+    "noEvents": "暂无事件记录"
+  },
+  "stats": {
+    "enforcing": "执行中",
+    "observing": "观察中",
+    "disabled": "已禁用"
+  },
+  "defenseStatus": {
+    "title": "防御状态"
+  },
+  "integrity": {
+    "title": "自我完整性",
+    "noData": "无完整性数据",
+    "filesTracked": "{{count}} 个文件追踪",
+    "protectedRoots": "{{count}} 个保护根目录",
+    "updated": "更新于"
+  },
+  "config": {
+    "title": "配置管理",
+    "loading": "加载配置中...",
+    "errorLoading": "加载配置出错：",
+    "unsavedChanges": "有未保存的更改",
+    "resetDefaults": "恢复默认",
+    "save": "保存",
+    "masterControls": "主控制",
+    "enableAllDefenses": "启用所有防御",
+    "defaultMode": "默认模式：",
+    "executionGuards": "执行守卫",
+    "scanningOutput": "扫描与输出",
+    "protectedAssets": "受保护资产",
+    "protectedPaths": "受保护路径",
+    "protectedPathsHelp": "需要保护的额外绝对路径。",
+    "protectedPathsPlaceholder": "/path/to/protected",
+    "protectedSkills": "受保护技能",
+    "protectedSkillsHelp": "需要保护的技能 ID。",
+    "protectedSkillsPlaceholder": "release-guard",
+    "protectedPlugins": "受保护插件",
+    "protectedPluginsHelp": "需要保护的插件 ID。",
+    "protectedPluginsPlaceholder": "audit-guard",
+    "advancedSettings": "高级设置",
+    "startupSkillScan": "启动时扫描技能"
+  },
+  "events": {
+    "title": "安全事件",
+    "totalEvents": "共 {{count}} 个事件",
+    "loading": "加载事件中...",
+    "noMatch": "没有匹配当前筛选条件的事件",
+    "allDefenses": "所有防御",
+    "selfProtection": "自我保护",
+    "commandBlock": "命令拦截",
+    "encodingGuard": "编码守卫",
+    "memoryGuard": "内存守卫",
+    "loopGuard": "循环守卫",
+    "exfiltrationGuard": "外泄守卫",
+    "skillScan": "技能扫描",
+    "promptGuard": "提示防护",
+    "userRiskScan": "用户风险扫描",
+    "dispatchGuard": "指令拦截",
+    "toolResultScan": "工具结果扫描",
+    "promptSelfBlock": "模型自主拦截",
+    "configEvent": "配置",
+    "allResults": "所有结果",
+    "blocked": "已拦截",
+    "observed": "已观察",
+    "clear": "正常",
+    "colTime": "时间",
+    "colDefense": "防御类型",
+    "colResult": "结果",
+    "colTool": "工具",
+    "colReason": "原因",
+    "colDetail": "详情",
+    "labelCommand": "指令",
+    "labelParams": "参数",
+    "labelUserInput": "用户输入",
+    "labelHook": "拦截点",
+    "labelMode": "模式",
+    "labelFlags": "风险标记",
+    "labelModel": "模型",
+    "labelProvider": "提供商"
+  },
+  "skills": {
+    "title": "技能扫描管理",
+    "totalSkills": "{{count}} 个受信任技能",
+    "loading": "加载技能中...",
+    "noSkills": "未找到受信任技能。技能将在扫描器评估后出现在此处。",
+    "confirmRemove": "移除受信任技能？\n{{path}}",
+    "colPath": "路径",
+    "colHash": "哈希",
+    "colSize": "大小",
+    "colScanned": "扫描时间",
+    "colActions": "操作",
+    "removeTitle": "从信任列表中移除",
+    "tabScanResults": "扫描记录",
+    "tabTrustedSkills": "受信任技能",
+    "totalScans": "共 {{count}} 条扫描记录",
+    "noScans": "暂无扫描记录",
+    "filterAll": "全部",
+    "filterTrusted": "受信任",
+    "filterRisky": "有风险",
+    "colSkillId": "技能 ID",
+    "colResult": "结果",
+    "colFindings": "发现",
+    "colPhase": "阶段",
+    "colTime": "时间",
+    "trusted": "受信任",
+    "risky": "有风险",
+    "phaseStartup": "启动扫描",
+    "phaseTurnReview": "轮次审查",
+    "noFindings": "无风险发现"
+  },
+  "common": {
+    "add": "添加"
+  },
+  "modes": {
+    "off": "关闭",
+    "observe": "观察",
+    "enforce": "执行"
+  },
+  "status": {
+    "enforce": "执行",
+    "observe": "观察",
+    "off": "关闭",
+    "blocked": "已拦截",
+    "observed": "已观察",
+    "clear": "正常",
+    "active": "活跃",
+    "inactive": "未活跃"
+  },
+  "defenseGroups": {
+    "selfProtection": {
+      "label": "保护敏感路径",
+      "help": "拦截针对受保护路径、重要技能的读写删除和搜索操作，或阻止删除当前工作区外的文件。"
+    },
+    "commandBlock": {
+      "label": "拦截高风险命令",
+      "help": "拦截明确的高风险 Shell 模式，如 rm -rf / 和 curl | sh。"
+    },
+    "encodingGuard": {
+      "label": "防护编码载荷",
+      "help": "检测隐藏风险命令或外泄逻辑的 base64/base32/hex/url 编码载荷。"
+    },
+    "scriptProvenanceGuard": {
+      "label": "追踪脚本来源",
+      "help": "追踪当前运行中新写入的脚本，并在后续执行中拦截携带风险命令或外泄信号的脚本。"
+    },
+    "memoryGuard": {
+      "label": "防护内存写入",
+      "help": "拒绝对 memory_store、MEMORY.md、SOUL.md 和 memory/ 的可疑或超大写入。"
+    },
+    "loopGuard": {
+      "label": "启用循环守卫",
+      "help": "在每次运行的重试预算用尽后，停止重复的变更工具调用。"
+    },
+    "exfiltrationGuard": {
+      "label": "防护外泄链",
+      "help": "追踪每次运行中的先前工具调用，拦截类似 SSRF 或密钥外泄的可疑出站链。"
+    },
+    "userRiskScan": {
+      "label": "扫描用户意图",
+      "help": "在 message_received 中检测越狱、密钥外泄和插件篡改请求。"
+    },
+    "skillScan": {
+      "label": "扫描技能",
+      "help": "为 ~/.openclaw/skills 和 ~/.openclaw/workspace/skills 启用轻量级本地技能扫描器。"
+    },
+    "toolResultScan": {
+      "label": "扫描工具结果",
+      "help": "扫描 toolResult 内容中的提示注入、密钥请求和外泄模式。"
+    },
+    "outputRedaction": {
+      "label": "脱敏输出内容",
+      "help": "在助手输出发送或持久化前，遮蔽 API 密钥、令牌等敏感值。"
+    },
+    "promptGuard": {
+      "label": "注入提示守卫",
+      "help": "在 before_prompt_build 期间注入静态和一次性安全提醒。"
+    },
+    "dispatchGuard": {
+      "label": "指令拦截守卫",
+      "help": "在用户消息到达 AI 前和 LLM 回复前拦截危险操作请求，包括 openclaw CLI 命令、保护路径破坏、绕过 tool call 等。"
+    },
+    "toolCallEnforcement": {
+      "label": "强制 Tool Call 执行",
+      "help": "通过 prompt 注入要求所有破坏性操作必须通过标准 tool call 执行，禁止绕过安全 hook。"
+    }
+  }
+}

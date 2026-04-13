@@ -1,0 +1,18 @@
+{
+  "name": "claw-aegis-web",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "shared",
+    "api",
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c blue,green \"npm run dev -w api\" \"npm run dev -w frontend\"",
+    "build": "npm run build -w shared && npm run build -w api && npm run build -w frontend",
+    "start": "npm run start -w api"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}

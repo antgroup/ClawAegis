@@ -113,7 +113,141 @@ ClawAegis/
     ├── scan-worker.ts          # Skill扫描Worker逻辑
     ├── command-obfuscation.ts  # Shell命令混淆检测
     └── encoding-guard.ts       # 编码载荷检测
+└── web/                        # WebUI管理面板
+    ├── shared/                 # 前后端共享的类型定义、Zod校验schema、防御分组元数据
+    ├── api/                    # Express后端服务
+    │   └── src/
+    │       ├── routes/         # API路由（config、status、events、skills）
+    │       └── services/       # 业务逻辑（配置读写、状态读取、事件管理、文件监听）
+    └── frontend/               # React + Vite + TailwindCSS前端
+        └── src/
+            ├── api/            # API客户端封装 + React Query hooks
+            ├── pages/          # 页面组件（Dashboard、Config、Events、Skills）
+            └── components/     # UI组件（布局、仪表盘、配置编辑器、通用控件）
 ```
+
+---
+
+## 🖥️ WebUI
+
+ClawAegis 附带独立的 Web 管理面板，用于可视化配置防御策略、查看安全状态、浏览事件日志和管理 Skill 扫描。
+
+### 快速开始
+
+安装插件后，进入插件目录启动 WebUI：
+
+```bash
+# macOS / Linux
+cd ~/.openclaw/extensions/claw-aegis/web
+
+# Windows
+cd %USERPROFILE%\.openclaw\extensions\claw-aegis\web
+```
+
+```bash
+npm install
+npm run build
+npm start
+```
+
+启动后访问 `http://localhost:3800` 即可打开管理面板。
+
+开发模式（支持热更新）：
+
+```bash
+npm run dev
+```
+
+### 功能页面
+
+**Dashboard（仪表盘）** — 防御状态统计卡片、12项防御机制状态矩阵、插件自完整性状态、Trusted Skills计数、最近安全事件列表。
+
+<p align="center">
+  <img src="docs/webui-dashboard-zh.png" alt="WebUI 仪表盘" width="90%" />
+</p>
+
+**Config（配置编辑器）** — Master Controls（全局防御开关 + 默认拦截模式）、每项防御独立卡片、Protected Assets标签式编辑器、可折叠高级选项。支持脏状态追踪，Save / Reset to Defaults按钮。
+
+<p align="center">
+  <img src="docs/webui-config-zh.png" alt="WebUI 配置编辑器" width="90%" />
+</p>
+
+**Events（安全事件日志）** — 支持按防御类型和结果（blocked / observed / clear）筛选，自动每10秒刷新。
+
+<p align="center">
+  <img src="docs/webui-events-zh.png" alt="WebUI 事件日志" width="90%" />
+</p>
+
+**Skills（Skill扫描管理）** — Trusted Skills列表（路径、哈希、大小、扫描时间），支持手动移除。
+
+<p align="center">
+  <img src="docs/webui-skills-zh.png" alt="WebUI Skill管理" width="90%" />
+</p>
+
+### 配置参数说明
+
+ClawAegis 的防御参数存储在 `openclaw.plugin.json` 的 `userConfig` 字段中。可通过以下两种方式修改：
+
+**方式一：通过 WebUI 修改（推荐）**
+
+打开 WebUI 的 Config 页面，可视化切换开关和选择模式，点击 **Save** 保存。
+
+**方式二：直接编辑 JSON 文件**
+
+编辑 `openclaw.plugin.json`，添加或修改 `userConfig` 字段：
+
+```json
+{
+  "userConfig": {
+    "allDefensesEnabled": true,
+    "defaultBlockingMode": "enforce",
+    "selfProtectionEnabled": true,
+    "selfProtectionMode": "enforce",
+    "commandBlockEnabled": true,
+    "commandBlockMode": "enforce",
+    "memoryGuardEnabled": true,
+    "memoryGuardMode": "observe",
+    "protectedPaths": ["/path/to/sensitive/file"],
+    "protectedSkills": ["my-important-skill"],
+    "protectedPlugins": ["audit-guard"]
+  }
+}
+```
+
+**参数一览：**
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `allDefensesEnabled` | boolean | `true` | 全局防御总开关 |
+| `defaultBlockingMode` | `off` / `observe` / `enforce` | `enforce` | 所有拦截类防御的默认模式 |
+| `selfProtectionEnabled` | boolean | `true` | 保护敏感路径、Skill和插件 |
+| `selfProtectionMode` | `off` / `observe` / `enforce` | `enforce` | 敏感路径防御的模式 |
+| `commandBlockEnabled` | boolean | `true` | 拦截高危Shell命令（如 `rm -rf /`、`curl \| sh`） |
+| `commandBlockMode` | `off` / `observe` / `enforce` | `enforce` | 命令拦截的模式 |
+| `encodingGuardEnabled` | boolean | `true` | 检测编码/混淆载荷 |
+| `encodingGuardMode` | `off` / `observe` / `enforce` | `enforce` | 编码检测的模式 |
+| `scriptProvenanceGuardEnabled` | boolean | `true` | 追踪并拦截当前运行期间写入的风险脚本 |
+| `scriptProvenanceGuardMode` | `off` / `observe` / `enforce` | `enforce` | 脚本溯源防御的模式 |
+| `memoryGuardEnabled` | boolean | `true` | 拒绝可疑的记忆写入 |
+| `memoryGuardMode` | `off` / `observe` / `enforce` | `enforce` | 记忆防护的模式 |
+| `loopGuardEnabled` | boolean | `true` | 阻止重复的变异工具调用 |
+| `loopGuardMode` | `off` / `observe` / `enforce` | `enforce` | 循环防护的模式 |
+| `exfiltrationGuardEnabled` | boolean | `true` | 拦截SSRF/数据泄露链 |
+| `exfiltrationGuardMode` | `off` / `observe` / `enforce` | `enforce` | 泄露防护的模式 |
+| `dispatchGuardEnabled` | boolean | `true` | 拦截针对受保护资源的危险消息 |
+| `dispatchGuardMode` | `off` / `observe` / `enforce` | `enforce` | 消息分发防护的模式 |
+| `userRiskScanEnabled` | boolean | `true` | 检测用户消息中的越狱和篡改意图 |
+| `skillScanEnabled` | boolean | `true` | 启用Skill扫描 |
+| `toolResultScanEnabled` | boolean | `true` | 扫描工具结果中的注入模式 |
+| `outputRedactionEnabled` | boolean | `true` | 遮蔽输出中的API密钥和令牌 |
+| `promptGuardEnabled` | boolean | `true` | 向提示词注入安全提醒 |
+| `toolCallEnforcementEnabled` | boolean | `true` | 要求破坏性操作必须通过工具调用 |
+| `protectedPaths` | string[] | `[]` | 额外受保护的路径列表 |
+| `protectedSkills` | string[] | `[]` | 额外受保护的Skill ID列表 |
+| `protectedPlugins` | string[] | `[]` | 额外受保护的插件ID列表 |
+| `startupSkillScan` | boolean | `true` | 启动时运行Skill扫描 |
+
+> **模式说明**：`enforce` = 拦截并记录，`observe` = 仅记录（放行），`off` = 关闭。
 
 ---
 

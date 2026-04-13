@@ -15,7 +15,10 @@ import type {
   PluginHookSessionEndEvent,
 } from "../runtime-api.js";
 import {
+  BLOCK_REASON_DISPATCH_GUARD,
   CLAW_AEGIS_PLUGIN_ID,
+  DEFENSE_EVENTS_FILENAME,
+  SKILL_SCAN_EVENTS_FILENAME,
   STARTUP_SCAN_BUDGET_MS,
 } from "./config.js";
 import {
@@ -32,6 +35,8 @@ import {
   collectSensitiveOutputValues,
   collectToolResultScanText,
   detectCommandObfuscationViolation,
+  AEGIS_REFUSAL_PREFIX,
+  detectDispatchGuardViolation,
   detectHighRiskCommand,
   detectUserRiskFlags,
   isOutboundToolCall,
@@ -367,12 +372,56 @@ function resolveToolCallDefenseMode(
   modes: ToolCallDefenseModes,
   source: ToolCallDefenseModeSource | readonly ToolCallDefenseModeSource[],
 ): DefenseMode {
-  const sources = Array.isArray(source) ? source : [source];
+  const sources: ToolCallDefenseModeSource[] = Array.isArray(source) ? source : [source];
   return mergeDefenseModes(...sources.map((entry) => modes[entry]));
 }
 
 function isDefenseEnabled(mode: DefenseMode): boolean {
   return mode !== "off";
+}
+
+type DefenseEventRecord = {
+  timestamp: number;
+  defense: string;
+  result: "blocked" | "observed";
+  toolName?: string;
+  reason?: string;
+  details?: Record<string, unknown>;
+  commandText?: string;
+  toolParams?: Record<string, unknown>;
+  userInput?: string;
+};
+
+function createDefenseEventWriter(stateDir: string) {
+  const eventsPath = path.join(stateDir, DEFENSE_EVENTS_FILENAME);
+  let ensured = false;
+  return (record: DefenseEventRecord) => {
+    const line = JSON.stringify(record) + "\n";
+    const doWrite = async () => {
+      if (!ensured) {
+        await fs.mkdir(stateDir, { recursive: true });
+        ensured = true;
+      }
+      await fs.appendFile(eventsPath, line, "utf8");
+    };
+    doWrite().catch(() => {});
+  };
+}
+
+function createSkillScanEventWriter(stateDir: string) {
+  const eventsPath = path.join(stateDir, SKILL_SCAN_EVENTS_FILENAME);
+  let ensured = false;
+  return (record: Record<string, unknown>) => {
+    const line = JSON.stringify(record) + "\n";
+    const doWrite = async () => {
+      if (!ensured) {
+        await fs.mkdir(stateDir, { recursive: true });
+        ensured = true;
+      }
+      await fs.appendFile(eventsPath, line, "utf8");
+    };
+    doWrite().catch(() => {});
+  };
 }
 
 function logObservedToolCall(params: {
@@ -413,19 +462,26 @@ export function createClawAegisRuntime(
   const logger = createAegisLogger(api);
   const now = options?.now ?? Date.now;
   const stateDir = resolveClawAegisStateDir(api);
+  const emitDefenseEvent = createDefenseEventWriter(stateDir);
   const config = resolveClawAegisPluginConfig(api);
   const skillScanRoots = resolveSkillScanRoots(api);
   const state = new ClawAegisState({ stateDir, logger, now: options?.now });
+  const emitSkillScanEvent = createSkillScanEventWriter(stateDir);
   const scanService = new SkillScanService({
     state,
     logger,
     now: options?.now,
     runner: options?.scanRunner,
+    onScanComplete: emitSkillScanEvent,
   });
   const toolCallDefenseStrategies =
     options?.toolCallDefenseStrategies ?? TOOL_CALL_DEFENSE_STRATEGIES;
   const staticSystemContext = config.promptGuardEnabled
-    ? buildStaticSystemContext({ selfProtectionEnabled: config.selfProtectionEnabled })
+    ? buildStaticSystemContext({
+        selfProtectionEnabled: config.selfProtectionEnabled,
+        toolCallEnforcementEnabled: config.toolCallEnforcementEnabled,
+        protectedPaths: config.protectedPaths,
+      })
     : undefined;
   const promptHooksEnabled = arePromptHooksEnabled(api);
 
@@ -524,6 +580,9 @@ export function createClawAegisRuntime(
       message_received: (event: { content: string }, ctx: { sessionKey?: string }) => {
         const startedAt = now();
         const sessionKey = ctx.sessionKey?.trim();
+        if (sessionKey && event.content) {
+          state.noteLastUserInput(sessionKey, event.content);
+        }
         logDefenseStart(logger, {
           hook: "message_received",
           mechanism: "user_risk_scan",
@@ -583,6 +642,14 @@ export function createClawAegisRuntime(
           return;
         }
         state.noteUserRisk(sessionKey, match.flags);
+        emitDefenseEvent({
+          timestamp: now(),
+          defense: "user_risk_scan",
+          result: "observed",
+          reason: `检测到风险标记: ${match.flags.join(", ")}`,
+          details: { flags: match.flags },
+          userInput: (event.content ?? "").slice(0, 500),
+        });
         logger.warn("claw-aegis: 检测到用户风险请求", {
           event: "user_risk_detected",
           hook: "message_received",
@@ -641,6 +708,13 @@ export function createClawAegisRuntime(
         const sanitized = sanitizeSensitiveOutputText(event.content, { observedSecrets });
         const durationMs = now() - startedAt;
         if (sanitized.changed) {
+          emitDefenseEvent({
+            timestamp: now(),
+            defense: "output_redaction",
+            result: "observed",
+            reason: `脱敏 ${sanitized.redactionCount} 处敏感内容`,
+            details: { redactionCount: sanitized.redactionCount, matchedKeywords: sanitized.matchedKeywords },
+          });
           logger.warn("claw-aegis: 已脱敏对外发送消息中的敏感内容", {
             event: "outbound_message_redacted",
             hook: "message_sending",
@@ -770,6 +844,44 @@ export function createClawAegisRuntime(
             riskySkills: currentState.riskySkills.length,
           });
         }
+        if (dynamicPromptContext && currentState) {
+          const triggeredFlags: string[] = [];
+          if (currentState.userRiskFlags.length > 0) {
+            triggeredFlags.push(...currentState.userRiskFlags);
+          }
+          if (currentState.runtimeRiskFlags.length > 0) {
+            triggeredFlags.push(...currentState.runtimeRiskFlags);
+          }
+          if (currentState.toolResultSuspicious) {
+            triggeredFlags.push("tool_result_suspicious");
+          }
+          if (currentState.toolResultOversize) {
+            triggeredFlags.push("tool_result_oversize");
+          }
+          if (currentState.toolResultRiskFlags.length > 0) {
+            triggeredFlags.push(...currentState.toolResultRiskFlags);
+          }
+          if (currentState.riskySkills.length > 0) {
+            triggeredFlags.push(...currentState.riskySkills.map((s) => `risky_skill:${s}`));
+          }
+          emitDefenseEvent({
+            timestamp: now(),
+            defense: "prompt_guard",
+            result: "observed",
+            reason: `提示防护已注入安全规则: ${triggeredFlags.join(", ")}`,
+            details: {
+              hook: "before_prompt_build",
+              userRiskFlags: currentState.userRiskFlags,
+              runtimeRiskFlags: currentState.runtimeRiskFlags,
+              toolResultSuspicious: currentState.toolResultSuspicious,
+              toolResultOversize: currentState.toolResultOversize,
+              toolResultRiskFlags: currentState.toolResultRiskFlags,
+              skillRiskFlags: currentState.skillRiskFlags,
+              riskySkills: currentState.riskySkills,
+            },
+            userInput: sessionKey ? state.peekLastUserInput(sessionKey) : undefined,
+          });
+        }
         if (!prependSystemContext) {
           logDefenseResult(logger, {
             hook: "before_prompt_build",
@@ -818,6 +930,211 @@ export function createClawAegisRuntime(
         return {
           prependSystemContext,
         };
+      },
+
+      before_dispatch: async (
+        event: { content: string; body?: string; channel?: string; sessionKey?: string; senderId?: string; isGroup?: boolean; timestamp?: number },
+        ctx: { channelId?: string; accountId?: string; conversationId?: string; sessionKey?: string; senderId?: string },
+      ): Promise<{ handled: boolean; text?: string } | undefined> => {
+        const startedAt = now();
+        const sessionKey = ctx.sessionKey?.trim();
+        logDefenseStart(logger, {
+          hook: "before_dispatch",
+          mechanism: "dispatch_guard",
+          sessionKey,
+        });
+
+        if (!config.dispatchGuardEnabled) {
+          logDefenseFinish(logger, {
+            hook: "before_dispatch",
+            mechanism: "dispatch_guard",
+            sessionKey,
+            result: "disabled",
+            durationMs: now() - startedAt,
+          });
+          return undefined;
+        }
+
+        const content = event.content?.trim();
+        if (!content) {
+          logDefenseFinish(logger, {
+            hook: "before_dispatch",
+            mechanism: "dispatch_guard",
+            sessionKey,
+            result: "empty_content",
+            durationMs: now() - startedAt,
+          });
+          return undefined;
+        }
+
+        const violation = detectDispatchGuardViolation(content, config.protectedPaths);
+        if (!violation.blocked) {
+          logDefenseFinish(logger, {
+            hook: "before_dispatch",
+            mechanism: "dispatch_guard",
+            sessionKey,
+            result: "clear",
+            durationMs: now() - startedAt,
+          });
+          return undefined;
+        }
+
+        const durationMs = now() - startedAt;
+        const reason = violation.reason ?? BLOCK_REASON_DISPATCH_GUARD;
+
+        emitDefenseEvent({
+          timestamp: now(),
+          defense: "dispatch_guard",
+          result: config.dispatchGuardMode === "enforce" ? "blocked" : "observed",
+          reason,
+          details: {
+            hook: "before_dispatch",
+            flags: violation.flags,
+            mode: config.dispatchGuardMode,
+          },
+          userInput: content,
+        });
+
+        if (config.dispatchGuardMode === "enforce") {
+          logger.warn("claw-aegis: before_dispatch 已拦截危险操作请求", {
+            event: "dispatch_guard_blocked",
+            hook: "before_dispatch",
+            sessionKey,
+            flags: violation.flags,
+            durationMs,
+          });
+          logDefenseFinish(logger, {
+            hook: "before_dispatch",
+            mechanism: "dispatch_guard",
+            sessionKey,
+            result: "blocked",
+            durationMs,
+          });
+          return {
+            handled: true,
+            text: `[ClawAegis] ${reason}\n\n所有破坏性操作必须通过标准 tool call 执行，不能绕过安全 hook。如确需执行，请联系管理员调整安全策略。`,
+          };
+        }
+
+        logger.info("claw-aegis: before_dispatch 已观测到危险操作请求（observe 模式）", {
+          event: "dispatch_guard_observed",
+          hook: "before_dispatch",
+          sessionKey,
+          flags: violation.flags,
+          durationMs,
+        });
+        logDefenseFinish(logger, {
+          hook: "before_dispatch",
+          mechanism: "dispatch_guard",
+          sessionKey,
+          result: "observed",
+          durationMs,
+        });
+        return undefined;
+      },
+
+      before_agent_reply: async (
+        event: { cleanedBody: string },
+        ctx: { runId?: string; agentId?: string; sessionKey?: string; sessionId?: string; workspaceDir?: string; trigger?: string },
+      ): Promise<{ handled: boolean; reply?: { text: string }; reason?: string } | undefined> => {
+        const startedAt = now();
+        const sessionKey = ctx.sessionKey?.trim();
+        logDefenseStart(logger, {
+          hook: "before_agent_reply",
+          mechanism: "dispatch_guard",
+          sessionKey,
+        });
+
+        if (!config.dispatchGuardEnabled) {
+          logDefenseFinish(logger, {
+            hook: "before_agent_reply",
+            mechanism: "dispatch_guard",
+            sessionKey,
+            result: "disabled",
+            durationMs: now() - startedAt,
+          });
+          return undefined;
+        }
+
+        const cleanedBody = event.cleanedBody?.trim();
+        if (!cleanedBody) {
+          logDefenseFinish(logger, {
+            hook: "before_agent_reply",
+            mechanism: "dispatch_guard",
+            sessionKey,
+            result: "empty_content",
+            durationMs: now() - startedAt,
+          });
+          return undefined;
+        }
+
+        const violation = detectDispatchGuardViolation(cleanedBody, config.protectedPaths);
+        if (!violation.blocked) {
+          logDefenseFinish(logger, {
+            hook: "before_agent_reply",
+            mechanism: "dispatch_guard",
+            sessionKey,
+            result: "clear",
+            durationMs: now() - startedAt,
+          });
+          return undefined;
+        }
+
+        const durationMs = now() - startedAt;
+        const reason = violation.reason ?? BLOCK_REASON_DISPATCH_GUARD;
+
+        emitDefenseEvent({
+          timestamp: now(),
+          defense: "dispatch_guard",
+          result: config.dispatchGuardMode === "enforce" ? "blocked" : "observed",
+          reason,
+          details: {
+            hook: "before_agent_reply",
+            flags: violation.flags,
+            mode: config.dispatchGuardMode,
+          },
+          userInput: cleanedBody,
+        });
+
+        if (config.dispatchGuardMode === "enforce") {
+          logger.warn("claw-aegis: before_agent_reply 已拦截危险操作请求", {
+            event: "dispatch_guard_blocked",
+            hook: "before_agent_reply",
+            sessionKey,
+            flags: violation.flags,
+            durationMs,
+          });
+          logDefenseFinish(logger, {
+            hook: "before_agent_reply",
+            mechanism: "dispatch_guard",
+            sessionKey,
+            result: "blocked",
+            durationMs,
+          });
+          return {
+            handled: true,
+            reply: {
+              text: `[ClawAegis] ${reason}\n\n所有破坏性操作必须通过标准 tool call 执行，不能绕过安全 hook。如确需执行，请联系管理员调整安全策略。`,
+            },
+            reason: "dispatch_guard",
+          };
+        }
+
+        logger.info("claw-aegis: before_agent_reply 已观测到危险操作请求（observe 模式）", {
+          event: "dispatch_guard_observed",
+          hook: "before_agent_reply",
+          sessionKey,
+          flags: violation.flags,
+          durationMs,
+        });
+        logDefenseFinish(logger, {
+          hook: "before_agent_reply",
+          mechanism: "dispatch_guard",
+          sessionKey,
+          result: "observed",
+          durationMs,
+        });
+        return undefined;
       },
 
       before_tool_call: (
@@ -983,6 +1300,17 @@ export function createClawAegisRuntime(
           };
 
           if (evaluation.result === "blocked") {
+            emitDefenseEvent({
+              timestamp: now(),
+              defense: strategy.id,
+              result: "blocked",
+              toolName: normalizedToolName,
+              reason: evaluation.reason,
+              details: evaluation.extra,
+              commandText,
+              toolParams: normalizedParams,
+              userInput: sessionKey ? state.peekLastUserInput(sessionKey) : undefined,
+            });
             logger.warn(strategy.blockedMessage ?? "claw-aegis: 已阻止风险工具调用", {
               event: "tool_call_blocked",
               hook: "before_tool_call",
@@ -1011,6 +1339,17 @@ export function createClawAegisRuntime(
           }
 
           if (evaluation.result === "observed") {
+            emitDefenseEvent({
+              timestamp: now(),
+              defense: strategy.id,
+              result: "observed",
+              toolName: normalizedToolName,
+              reason: evaluation.reason ?? "unknown",
+              details: evaluation.extra,
+              commandText,
+              toolParams: normalizedParams,
+              userInput: sessionKey ? state.peekLastUserInput(sessionKey) : undefined,
+            });
             logObservedToolCall({
               logger,
               mechanism: strategy.id,
@@ -1127,6 +1466,52 @@ export function createClawAegisRuntime(
         });
       },
 
+      llm_output: (
+        event: {
+          assistantTexts: string[];
+          runId: string;
+          sessionId: string;
+          provider: string;
+          model: string;
+        },
+        _ctx: { sessionKey?: string; runId?: string },
+      ) => {
+        if (!config.allDefensesEnabled) return;
+
+        for (const text of event.assistantTexts) {
+          if (!text.includes(AEGIS_REFUSAL_PREFIX)) continue;
+
+          // Extract refusal reason: text after "[ClawAegis]" on the same line
+          const idx = text.indexOf(AEGIS_REFUSAL_PREFIX);
+          const afterPrefix = text
+            .slice(idx + AEGIS_REFUSAL_PREFIX.length)
+            .split("\n")[0]
+            .trim();
+          const reason = afterPrefix || "LLM 自行拒绝（未提供具体原因）";
+
+          emitDefenseEvent({
+            timestamp: now(),
+            defense: "prompt_self_block",
+            result: "blocked",
+            reason,
+            details: {
+              hook: "llm_output",
+              model: event.model,
+              provider: event.provider,
+            },
+          });
+          logger.info("claw-aegis: LLM 输出包含 Aegis 拒绝标记", {
+            event: "prompt_self_block_detected",
+            hook: "llm_output",
+            model: event.model,
+            provider: event.provider,
+            reason,
+          });
+          // Only emit one event per LLM output, even if multiple texts match
+          break;
+        }
+      },
+
       agent_end: (
         _event: PluginHookAgentEndEvent,
         ctx: {
@@ -1208,6 +1593,13 @@ export function createClawAegisRuntime(
           const sanitized = sanitizeAssistantMessage(message, { observedSecrets });
           const durationMs = now() - startedAt;
           if (sanitized.changed) {
+            emitDefenseEvent({
+              timestamp: now(),
+              defense: "output_redaction",
+              result: "observed",
+              reason: `脱敏 assistant 输出 ${sanitized.redactionCount} 处`,
+              details: { redactionCount: sanitized.redactionCount, matchedKeywords: sanitized.matchedKeywords },
+            });
             logger.warn("claw-aegis: 已脱敏 assistant 输出中的敏感内容", {
               event: "assistant_output_redacted",
               hook: "before_message_write",
@@ -1342,6 +1734,14 @@ export function createClawAegisRuntime(
             outcome.riskFlags.length > 0 ||
             sanitized.removedTokenCount > 0
           ) {
+            emitDefenseEvent({
+              timestamp: now(),
+              defense: "tool_result_scan",
+              result: "observed",
+              toolName: typeof message.toolName === "string" ? message.toolName : undefined,
+              reason: `风险标记: ${outcome.riskFlags.join(", ") || "suspicious/oversize"}`,
+              details: { flags: outcome.riskFlags, suspicious: outcome.suspicious, oversize: outcome.oversize },
+            });
             logger.warn("claw-aegis: 已完成工具结果审查", logMeta);
           } else {
             logger.debug?.("claw-aegis: 已完成工具结果审查", logMeta);

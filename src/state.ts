@@ -136,6 +136,7 @@ export class ClawAegisState {
   private readonly loopCounters = new Map<string, LoopCounterEntry>();
   private readonly sessionSecrets = new Map<string, ObservedSecretEntry>();
   private readonly sessionPrompts = new Map<string, PromptSnapshot>();
+  private readonly lastUserInputs = new Map<string, { value: string; updatedAt: number }>();
   private readonly runToolCalls = new Map<string, RunToolCallState>();
   private readonly runSecuritySignals = new Map<string, RunSecuritySignalState>();
   private readonly trustedSkills = new Map<string, TrustedSkillRecord>();
@@ -187,6 +188,11 @@ export class ClawAegisState {
     for (const [sessionKey, entry] of this.sessionPrompts) {
       if (now - entry.updatedAt > TURN_STATE_TTL_MS) {
         this.sessionPrompts.delete(sessionKey);
+      }
+    }
+    for (const [sessionKey, entry] of this.lastUserInputs) {
+      if (now - entry.updatedAt > TURN_STATE_TTL_MS) {
+        this.lastUserInputs.delete(sessionKey);
       }
     }
     for (const [runId, entry] of this.runToolCalls) {
@@ -420,6 +426,24 @@ export class ClawAegisState {
     }
     entry.updatedAt = now;
     return { ...entry };
+  }
+
+  noteLastUserInput(sessionKey: string, content: string): void {
+    const now = this.now();
+    this.cleanupExpiredState(now);
+    this.lastUserInputs.set(sessionKey, {
+      value: content.slice(0, 500),
+      updatedAt: now,
+    });
+  }
+
+  peekLastUserInput(sessionKey: string): string | undefined {
+    const now = this.now();
+    this.cleanupExpiredState(now);
+    const entry = this.lastUserInputs.get(sessionKey);
+    if (!entry) return undefined;
+    entry.updatedAt = now;
+    return entry.value;
   }
 
   noteRunToolCall(runId: string, record: ToolCallRecord): number {

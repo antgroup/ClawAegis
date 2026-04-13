@@ -87,6 +87,17 @@ export class SkillScanService {
       logger: AegisLogger;
       now?: () => number;
       runner?: (request: SkillScanRequest) => Promise<SkillScanResult>;
+      onScanComplete?: (record: {
+        timestamp: number;
+        skillId: string;
+        path: string;
+        hash: string;
+        size: number;
+        sourceRoot?: string;
+        trusted: boolean;
+        findings: string[];
+        phase: string;
+      }) => void;
     },
   ) {}
 
@@ -403,6 +414,7 @@ export class SkillScanService {
           const result = await this.executeScan(request, "turn_review");
           const assessment = this.buildAssessment(request, result, prepared.skillId);
           this.params.state.rememberSkillAssessment(assessment);
+          this.emitScanComplete(assessment, "turn_review");
           if (assessment.trusted) {
             persistTrustedSkillsNeeded = true;
             return;
@@ -711,6 +723,20 @@ export class SkillScanService {
     return { status: "queued" };
   }
 
+  private emitScanComplete(assessment: SkillAssessmentRecord, phase: string): void {
+    this.params.onScanComplete?.({
+      timestamp: assessment.scannedAt,
+      skillId: assessment.skillId,
+      path: assessment.path,
+      hash: assessment.hash,
+      size: assessment.size,
+      sourceRoot: assessment.sourceRoot,
+      trusted: assessment.trusted,
+      findings: assessment.findings,
+      phase,
+    });
+  }
+
   private hashText(text: string): string {
     return createHash("sha256").update(text).digest("hex");
   }
@@ -746,6 +772,7 @@ export class SkillScanService {
       const durationMs = this.now() - startedAt;
       const assessment = this.buildAssessment(next, result, extractSkillId(next.path, next.text));
       this.params.state.rememberSkillAssessment(assessment);
+      this.emitScanComplete(assessment, "startup");
       if (assessment.trusted) {
         await this.params.state.persistTrustedSkills();
       }
@@ -866,7 +893,7 @@ export class SkillScanService {
     try {
       const workerUrl = new URL("./scan-worker.js", import.meta.url);
       await fs.access(fileURLToPath(workerUrl));
-      const worker = new Worker(workerUrl, { type: "module" });
+      const worker = new Worker(workerUrl, { type: "module" } as WorkerOptions);
       worker.on(
         "message",
         (message: { requestId?: string; result?: SkillScanResult; error?: string }) => {

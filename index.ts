@@ -2,7 +2,8 @@ import { definePluginEntry, type OpenClawPluginApi } from "./runtime-api.js";
 import { clawAegisPluginConfigDefinition } from "./src/config.js";
 import { createClawAegisRuntime } from "./src/handlers.js";
 
-type GenericHookHandler = (event: unknown, ctx: unknown) => unknown;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- handlers have heterogeneous signatures; `any` is needed for contravariance
+type GenericHookHandler = (event: any, ctx: any) => any;
 
 export function wrapHookFailOpen(
   api: OpenClawPluginApi,
@@ -43,6 +44,14 @@ export function registerClawAegisPlugin(
       wrapHookFailOpen(api, "before_prompt_build", runtime.hooks.before_prompt_build),
     );
     api.on(
+      "before_dispatch",
+      wrapHookFailOpen(api, "before_dispatch", runtime.hooks.before_dispatch),
+    );
+    api.on(
+      "before_agent_reply",
+      wrapHookFailOpen(api, "before_agent_reply", runtime.hooks.before_agent_reply),
+    );
+    api.on(
       "before_tool_call",
       wrapHookFailOpen(api, "before_tool_call", runtime.hooks.before_tool_call),
     );
@@ -54,6 +63,7 @@ export function registerClawAegisPlugin(
       "before_message_write",
       wrapHookFailOpen(api, "before_message_write", runtime.hooks.before_message_write),
     );
+    api.on("llm_output", wrapHookFailOpen(api, "llm_output", runtime.hooks.llm_output));
     api.on("agent_end", wrapHookFailOpen(api, "agent_end", runtime.hooks.agent_end));
     api.on("session_end", wrapHookFailOpen(api, "session_end", runtime.hooks.session_end));
   } catch (error) {

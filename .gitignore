@@ -3,3 +3,13 @@ package-lock.json
 src/__tests__
 node_modules
 vitest.config.ts
+
+# Build artifacts
+web/api/dist/
+web/shared/dist/
+web/frontend/dist/
+web/shared/tsconfig.tsbuildinfo
+
+# OS
+.DS_Store
+Thumbs.db

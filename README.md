@@ -116,7 +116,141 @@ ClawAegis/
     ├── scan-worker.ts          # Worker logic for individual skill scans
     ├── command-obfuscation.ts  # Shell command obfuscation detection
     └── encoding-guard.ts       # Encoded payload detection
+└── web/                        # WebUI management panel
+    ├── shared/                 # Shared types, Zod schemas, defense group metadata
+    ├── api/                    # Express backend service
+    │   └── src/
+    │       ├── routes/         # API routes (config, status, events, skills)
+    │       └── services/       # Business logic (config R/W, status, events, file watcher)
+    └── frontend/               # React + Vite + TailwindCSS frontend
+        └── src/
+            ├── api/            # API client wrappers + React Query hooks
+            ├── pages/          # Page components (Dashboard, Config, Events, Skills)
+            └── components/     # UI components (layout, dashboard, config editor, controls)
 ```
+
+---
+
+## 🖥️ WebUI
+
+ClawAegis includes a standalone Web management panel for visually configuring defense policies, viewing security status, browsing event logs, and managing Skill scans.
+
+### Quick Start
+
+After installing the plugin, navigate to the plugin directory and start the WebUI:
+
+```bash
+# macOS / Linux
+cd ~/.openclaw/extensions/claw-aegis/web
+
+# Windows
+cd %USERPROFILE%\.openclaw\extensions\claw-aegis\web
+```
+
+```bash
+npm install
+npm run build
+npm start
+```
+
+Open `http://localhost:3800` to access the management panel.
+
+For development mode with hot-reload:
+
+```bash
+npm run dev
+```
+
+### Feature Pages
+
+**Dashboard** — Defense status overview, 12-defense status matrix, self-integrity status, Trusted Skills count, and recent security events.
+
+<p align="center">
+  <img src="docs/webui-dashboard-en.png" alt="WebUI Dashboard" width="90%" />
+</p>
+
+**Config** — Master controls (global toggle + default blocking mode), per-defense cards, Protected Assets tag editor, and Advanced options. Supports dirty-state tracking with Save / Reset to Defaults.
+
+<p align="center">
+  <img src="docs/webui-config-en.png" alt="WebUI Config" width="90%" />
+</p>
+
+**Events** — Security event log with filtering by defense type and result (blocked / observed / clear), auto-refreshing every 10 seconds.
+
+<p align="center">
+  <img src="docs/webui-events-en.png" alt="WebUI Events" width="90%" />
+</p>
+
+**Skills** — Trusted Skills list (path, hash, size, scan time) with manual removal support.
+
+<p align="center">
+  <img src="docs/webui-skills-en.png" alt="WebUI Skills" width="90%" />
+</p>
+
+### Configuration Parameters
+
+ClawAegis defense parameters are stored in `openclaw.plugin.json` under the `userConfig` field. You can modify them in two ways:
+
+**Method 1: Via WebUI (Recommended)**
+
+Open the WebUI Config page, toggle switches and select modes visually, then click **Save**.
+
+**Method 2: Via JSON**
+
+Edit `openclaw.plugin.json` directly and add or modify the `userConfig` field:
+
+```json
+{
+  "userConfig": {
+    "allDefensesEnabled": true,
+    "defaultBlockingMode": "enforce",
+    "selfProtectionEnabled": true,
+    "selfProtectionMode": "enforce",
+    "commandBlockEnabled": true,
+    "commandBlockMode": "enforce",
+    "memoryGuardEnabled": true,
+    "memoryGuardMode": "observe",
+    "protectedPaths": ["/path/to/sensitive/file"],
+    "protectedSkills": ["my-important-skill"],
+    "protectedPlugins": ["audit-guard"]
+  }
+}
+```
+
+**Parameter Reference:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `allDefensesEnabled` | boolean | `true` | Master switch for all defenses |
+| `defaultBlockingMode` | `off` / `observe` / `enforce` | `enforce` | Default mode for all blocking defenses |
+| `selfProtectionEnabled` | boolean | `true` | Protect sensitive paths, skills, and plugins |
+| `selfProtectionMode` | `off` / `observe` / `enforce` | `enforce` | Mode for protected-path defenses |
+| `commandBlockEnabled` | boolean | `true` | Block high-risk shell commands (e.g., `rm -rf /`, `curl \| sh`) |
+| `commandBlockMode` | `off` / `observe` / `enforce` | `enforce` | Mode for command blocking |
+| `encodingGuardEnabled` | boolean | `true` | Detect encoded/obfuscated payloads |
+| `encodingGuardMode` | `off` / `observe` / `enforce` | `enforce` | Mode for encoding guard |
+| `scriptProvenanceGuardEnabled` | boolean | `true` | Track and block risky scripts written in current run |
+| `scriptProvenanceGuardMode` | `off` / `observe` / `enforce` | `enforce` | Mode for script provenance guard |
+| `memoryGuardEnabled` | boolean | `true` | Reject suspicious memory writes |
+| `memoryGuardMode` | `off` / `observe` / `enforce` | `enforce` | Mode for memory guard |
+| `loopGuardEnabled` | boolean | `true` | Stop repeated mutating tool calls |
+| `loopGuardMode` | `off` / `observe` / `enforce` | `enforce` | Mode for loop guard |
+| `exfiltrationGuardEnabled` | boolean | `true` | Block SSRF/exfiltration chains |
+| `exfiltrationGuardMode` | `off` / `observe` / `enforce` | `enforce` | Mode for exfiltration guard |
+| `dispatchGuardEnabled` | boolean | `true` | Intercept dangerous messages targeting protected resources |
+| `dispatchGuardMode` | `off` / `observe` / `enforce` | `enforce` | Mode for dispatch guard |
+| `userRiskScanEnabled` | boolean | `true` | Detect jailbreak and tampering in user messages |
+| `skillScanEnabled` | boolean | `true` | Enable skill scanning |
+| `toolResultScanEnabled` | boolean | `true` | Scan tool results for injection patterns |
+| `outputRedactionEnabled` | boolean | `true` | Mask API keys and tokens in output |
+| `promptGuardEnabled` | boolean | `true` | Inject safety reminders into prompts |
+| `toolCallEnforcementEnabled` | boolean | `true` | Require destructive ops to go through tool calls |
+| `protectedPaths` | string[] | `[]` | Additional paths to protect |
+| `protectedSkills` | string[] | `[]` | Additional skill IDs to protect |
+| `protectedPlugins` | string[] | `[]` | Additional plugin IDs to protect |
+| `startupSkillScan` | boolean | `true` | Run skill scan at startup |
+
+> **Mode values**: `enforce` = block and log, `observe` = log only (allow through), `off` = disabled.
 
 ---
 
