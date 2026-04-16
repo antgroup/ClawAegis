@@ -5,7 +5,10 @@
     "moduleResolution": "bundler",
     "resolvePackageJsonExports": true,
     "skipLibCheck": true,
-    "types": ["node"]
+    "types": ["node"],
+    "outDir": ".",
+    "declaration": false
   },
-  "exclude": ["web", "node_modules"]
+  "include": ["*.ts", "src/**/*.ts"],
+  "exclude": ["web", "node_modules", "adapters"]
 }
