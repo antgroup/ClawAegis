@@ -7,8 +7,18 @@ hooks and wraps high-risk tool handlers to enforce the same defense-in-depth
 protections available in the OpenClaw version.
 
 Installation:
-    ln -s /path/to/ClawAegis/adapters/hermes ~/.hermes/plugins/claw-aegis
+    cp -r /path/to/ClawAegis/adapters/hermes ~/.hermes/plugins/claw-aegis
     cd /path/to/ClawAegis && npm run build
+
+Or use the install script:
+    bash adapters/hermes/install.sh
+
+Note on Hermes Integration:
+    - Hermes has no built-in plugin install command; plugins are auto-loaded
+      from ~/.hermes/plugins/ directory
+    - Hermes' pre_tool_call hook cannot block tool execution (observer only)
+    - ClawAegis uses tool wrapper replacement for actual blocking
+    - Consider setting 'approvals.mode: off' in Hermes config to avoid double prompts
 """
 
 from __future__ import annotations
@@ -18,6 +28,12 @@ import logging
 import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+from .paths import (
+    resolve_hermes_paths,
+    get_config_directory,
+    find_config_template,
+)
 
 logger = logging.getLogger("claw-aegis")
 
@@ -42,7 +58,7 @@ def _get_run_id() -> str:
 # ---------------------------------------------------------------------------
 
 def _load_config() -> dict:
-    """Load ClawAegis config from ~/.hermes/plugins/claw-aegis/config.yaml
+    """Load ClawAegis config from plugin config directory
     or fall back to defaults (all defenses enabled, enforce mode).
     """
     try:
@@ -51,7 +67,7 @@ def _load_config() -> dict:
         logger.debug("PyYAML not available, using default config")
         return {}
 
-    config_path = Path(os.path.expanduser("~/.hermes/plugins/claw-aegis/config.yaml"))
+    config_path = Path(get_config_directory()) / "config.yaml"
     if not config_path.is_file():
         logger.debug("No config.yaml found at %s, using defaults", config_path)
         return {}
@@ -65,29 +81,37 @@ def _load_config() -> dict:
         return {}
 
 
+def _check_hermes_config() -> dict:
+    """Check Hermes configuration for potential conflicts."""
+    issues = []
+    suggestions = []
+
+    # Check Hermes config
+    hermes_config_path = Path(os.path.expanduser("~/.hermes/config.yaml"))
+    if hermes_config_path.is_file():
+        try:
+            import yaml
+            with open(hermes_config_path) as f:
+                hermes_config = yaml.safe_load(f) or {}
+
+            approvals = hermes_config.get("approvals", {})
+            approval_mode = approvals.get("mode", "manual")
+
+            if approval_mode == "manual":
+                issues.append("Hermes approvals.mode is 'manual' - you may see double prompts")
+                suggestions.append("Set 'approvals.mode: off' in ~/.hermes/config.yaml")
+            elif approval_mode == "smart":
+                suggestions.append("Consider 'approvals.mode: off' to let ClawAegis handle all blocking")
+
+        except Exception as exc:
+            logger.debug("Could not check Hermes config: %s", exc)
+
+    return {"issues": issues, "suggestions": suggestions}
+
+
 def _resolve_paths() -> dict:
     """Resolve Hermes-specific paths for the ClawAegis runtime."""
-    hermes_home = Path(os.path.expanduser("~/.hermes"))
-    state_dir = str(hermes_home / "plugins" / "claw-aegis" / "state")
-    plugin_root = str(Path(__file__).resolve().parent.parent.parent)
-
-    skill_roots = []
-    skills_dir = hermes_home / "skills"
-    if skills_dir.is_dir():
-        skill_roots.append(str(skills_dir))
-
-    protected_roots = [
-        str(hermes_home / "plugins" / "claw-aegis"),
-        str(hermes_home),
-        plugin_root,
-    ]
-
-    return {
-        "state_dir": state_dir,
-        "plugin_root": plugin_root,
-        "skill_roots": skill_roots,
-        "protected_roots": protected_roots,
-    }
+    return resolve_hermes_paths()
 
 
 # ---------------------------------------------------------------------------
@@ -146,7 +170,13 @@ def _make_pre_llm_call_handler(engine):
             "sessionKey": session_id,
         })
         if guard_result.get("context"):
-            context_parts.append(guard_result["context"])
+            # Enhance context to make it more prominent in user message
+            enhanced_context = f"""[SECURITY POLICY - MUST FOLLOW]
+{guard_result['context']}
+[END SECURITY POLICY]
+
+"""
+            context_parts.append(enhanced_context)
 
         if context_parts:
             return {"context": "\n\n".join(context_parts)}
@@ -187,36 +217,6 @@ def _make_pre_tool_call_handler(engine):
 
 
 # ---------------------------------------------------------------------------
-# CLI command
-# ---------------------------------------------------------------------------
-
-def _setup_cli_command(subparser):
-    sub = subparser.add_subparsers(dest="aegis_action")
-    sub.add_parser("status", help="Show defense status")
-    sub.add_parser("config", help="Show current configuration")
-
-
-def _handle_cli_command(args, engine):
-    action = getattr(args, "aegis_action", "status")
-    if action == "config":
-        config = engine.call_safe("get_config")
-        if config:
-            import json as _json
-            print(_json.dumps(config, indent=2, ensure_ascii=False))
-        else:
-            print("ClawAegis engine not available")
-    else:
-        # status
-        if engine.alive:
-            config = engine.call_safe("get_config")
-            mode = config.get("defaultBlockingMode", "?") if config else "?"
-            enabled = config.get("allDefensesEnabled", "?") if config else "?"
-            print(f"ClawAegis: running | defenses={enabled} | mode={mode}")
-        else:
-            print("ClawAegis: not running")
-
-
-# ---------------------------------------------------------------------------
 # Plugin entry point
 # ---------------------------------------------------------------------------
 
@@ -224,6 +224,17 @@ def register(ctx):
     """Hermes plugin entry point — register hooks and wrap tools."""
     from .bridge import AegisEngine
     from .tool_wrappers import wrap_dangerous_tools
+
+    logger.info("ClawAegis: Initializing security plugin...")
+
+    # Check Hermes configuration for potential conflicts
+    hermes_check = _check_hermes_config()
+    if hermes_check["issues"]:
+        for issue in hermes_check["issues"]:
+            logger.warning(f"ClawAegis: {issue}")
+    if hermes_check["suggestions"]:
+        for suggestion in hermes_check["suggestions"]:
+            logger.info(f"ClawAegis: Suggestion: {suggestion}")
 
     engine = AegisEngine()
 
@@ -233,10 +244,16 @@ def register(ctx):
         logger.error("ClawAegis startup failed: %s", exc)
         logger.error("Ensure Node.js is installed and run 'npm run build' in the ClawAegis directory.")
         return
+    except Exception as exc:
+        logger.error("ClawAegis startup failed with unexpected error: %s", exc)
+        return
 
     # Initialize the RPC runtime
     config = _load_config()
     paths = _resolve_paths()
+
+    # Ensure state directory exists
+    Path(paths["state_dir"]).mkdir(parents=True, exist_ok=True)
 
     try:
         engine.call("init", {
@@ -256,20 +273,25 @@ def register(ctx):
     ctx.register_hook("on_session_end", _make_session_end_handler(engine))
     ctx.register_hook("pre_llm_call", _make_pre_llm_call_handler(engine))
     ctx.register_hook("post_tool_call", _make_post_tool_call_handler(engine))
+    # Note: pre_tool_call is observer-only in Hermes, actual blocking is done via tool wrapping
     ctx.register_hook("pre_tool_call", _make_pre_tool_call_handler(engine))
 
     # Wrap high-risk tool handlers for blocking capability
-    wrap_dangerous_tools(engine, _get_session_key, _get_run_id)
-
-    # Register CLI command
-    ctx.register_cli_command(
-        name="aegis",
-        help="ClawAegis security status and configuration",
-        setup_fn=_setup_cli_command,
-        handler_fn=lambda args: _handle_cli_command(args, engine),
-    )
+    # This is necessary because Hermes' pre_tool_call hook cannot block
+    wrapped_count = wrap_dangerous_tools(engine, _get_session_key, _get_run_id)
 
     # Cleanup on exit
     atexit.register(engine.stop)
 
-    logger.info("ClawAegis plugin registered successfully")
+    # Optionally start Web UI server
+    web_port = config.get("webPort", 0)
+    if web_port and isinstance(web_port, int) and web_port > 0:
+        try:
+            from .web_server import start_web_server, stop_web_server
+            web = start_web_server(port=web_port)
+            atexit.register(stop_web_server)
+            logger.info(f"ClawAegis: Web UI available at {web.url}")
+        except Exception as exc:
+            logger.warning(f"ClawAegis: Failed to start Web UI: {exc}")
+
+    logger.info(f"ClawAegis: Security plugin active ({wrapped_count} tools wrapped)")

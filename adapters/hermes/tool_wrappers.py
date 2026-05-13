@@ -108,22 +108,32 @@ def wrap_dangerous_tools(
     engine: AegisEngine,
     session_key_fn: Callable[[], str],
     run_id_fn: Callable[[], str],
-) -> None:
+) -> int:
     """Replace handlers for high-risk tools with ClawAegis-checked wrappers.
 
     This must be called after Hermes has loaded all built-in tools
     (i.e. during plugin register(), which runs after tool discovery).
+
+    Returns:
+        Number of tools successfully wrapped
     """
     try:
         from tools.registry import registry
-    except ImportError:
-        logger.error("Cannot import tools.registry — tool wrapping skipped")
-        return
+    except ImportError as exc:
+        logger.error("Cannot import tools.registry — tool wrapping skipped: %s", exc)
+        return 0
 
+    wrapped_count = 0
     for tool_name in TOOLS_TO_WRAP:
         entry = registry._tools.get(tool_name)
         if entry is None:
             logger.debug("Tool %s not found in registry, skipping wrap", tool_name)
+            continue
+
+        # Check if already wrapped (avoid double-wrapping)
+        if hasattr(entry.handler, '_claw_aegis_wrapped'):
+            logger.debug("Tool %s already wrapped, skipping", tool_name)
+            wrapped_count += 1
             continue
 
         # Save original handler
@@ -140,6 +150,9 @@ def wrap_dangerous_tools(
             run_id_fn=run_id_fn,
         )
 
+        # Mark as wrapped to prevent double-wrapping
+        safe_handler._claw_aegis_wrapped = True
+
         # Replace in registry via deregister + register (clean approach)
         schema = entry.schema
         toolset = entry.toolset
@@ -147,17 +160,25 @@ def wrap_dangerous_tools(
         requires_env = entry.requires_env
         description = entry.description
         emoji = entry.emoji
+        max_result_size = getattr(entry, 'max_result_size_chars', None)
 
-        registry.deregister(tool_name)
-        registry.register(
-            name=tool_name,
-            toolset=toolset,
-            schema=schema,
-            handler=safe_handler,
-            check_fn=check_fn,
-            requires_env=requires_env,
-            is_async=original_is_async,
-            description=description,
-            emoji=emoji,
-        )
-        logger.info("Wrapped tool %s with ClawAegis safety check", tool_name)
+        try:
+            registry.deregister(tool_name)
+            registry.register(
+                name=tool_name,
+                toolset=toolset,
+                schema=schema,
+                handler=safe_handler,
+                check_fn=check_fn,
+                requires_env=requires_env,
+                is_async=original_is_async,
+                description=description,
+                emoji=emoji,
+                max_result_size_chars=max_result_size,
+            )
+            logger.info("Wrapped tool %s with ClawAegis safety check", tool_name)
+            wrapped_count += 1
+        except Exception as exc:
+            logger.error("Failed to wrap tool %s: %s", tool_name, exc)
+
+    return wrapped_count

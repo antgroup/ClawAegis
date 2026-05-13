@@ -14,15 +14,8 @@ import path from "node:path";
 
 import type { ClawAegisPluginConfig, DefenseMode } from "./src/config.js";
 import {
-  BLOCK_REASON_EXFILTRATION_CHAIN,
-  BLOCK_REASON_HIGH_RISK_OPERATION,
-  BLOCK_REASON_LOOP,
-  BLOCK_REASON_MEMORY_WRITE,
-  BLOCK_REASON_PROTECTED_PATH,
-  BLOCK_REASON_WORKSPACE_DELETE,
   CLAW_AEGIS_PLUGIN_ID,
   DEFENSE_EVENTS_FILENAME,
-  LOOP_GUARD_ALLOW_COUNT,
   SKILL_SCAN_EVENTS_FILENAME,
   STARTUP_SCAN_BUDGET_MS,
 } from "./src/config.js";
@@ -53,11 +46,18 @@ import {
 } from "./src/rules.js";
 import {
   TOOL_CALL_DEFENSE_STRATEGIES,
+  type ToolCallDefenseContext,
+  type ToolCallDefenseEvaluation,
+  type ToolCallDefenseModeSource,
+  type ToolCallDefenseModes,
   type ToolCallDefenseStrategy,
 } from "./src/security-strategies.js";
 import { SkillScanService } from "./src/scan-service.js";
 import { ClawAegisState } from "./src/state.js";
 import type { AegisLogger } from "./src/types.js";
+
+// Define AgentMessage locally since it's not exported from types.ts
+type AgentMessage = Record<string, unknown>;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -104,6 +104,7 @@ export class AegisRpcRuntime {
   private pluginRootDir!: string;
   private staticSystemContext: string | undefined;
   private initialized = false;
+  private defenseEventWriter!: (event: Record<string, unknown>) => void;
 
   constructor() {
     this.logger = {
@@ -151,6 +152,9 @@ export class AegisRpcRuntime {
     const emitSkillScanEvent = this.createEventWriter(
       path.join(this.stateDir, SKILL_SCAN_EVENTS_FILENAME),
     );
+    this.defenseEventWriter = this.createEventWriter(
+      path.join(this.stateDir, DEFENSE_EVENTS_FILENAME),
+    );
     this.scanService = new SkillScanService({
       state: this.state,
       logger: this.logger,
@@ -161,7 +165,7 @@ export class AegisRpcRuntime {
       const deadline = Date.now() + STARTUP_SCAN_BUDGET_MS;
       for (const root of params.skillRoots) {
         if (Date.now() >= deadline) break;
-        await this.scanService.scanDirectory(root).catch(() => undefined);
+        await this.scanService.scanRoots({ roots: [root], budgetMs: deadline - Date.now() }).catch(() => undefined);
       }
     }
 
@@ -187,6 +191,17 @@ export class AegisRpcRuntime {
 
     if (flags.length > 0 && params.sessionKey) {
       this.state.noteUserRisk(params.sessionKey, flags);
+
+      // Record defense event for Web UI
+      this.defenseEventWriter({
+        defense: "userRiskScan",
+        mode: "observe",
+        reason: `User risk flags detected: ${flags.join(", ")}`,
+        severity: flags.some((f) => f.includes("disable")) ? "high" : "medium",
+        blocked: false,
+        details: { flags },
+        userInput: params.content.slice(0, 200),
+      });
     }
 
     return { riskFlags: flags };
@@ -229,145 +244,124 @@ export class AegisRpcRuntime {
     const args = normalizeToolParamsForGuard(params.args);
     const runId = params.runId ?? "unknown";
     const sessionKey = params.sessionKey ?? "default";
+    const baseDir = process.cwd();
 
-    // --- self protection ---
-    if (this.config.selfProtectionEnabled) {
-      const candidates = resolveProtectedPathCandidates(tool, args);
-      for (const candidate of candidates) {
-        const violation = resolveProtectedPathViolation(
-          candidate,
-          this.state.getProtectedRoots(),
-          this.config.protectedPaths,
-        );
-        if (violation) {
-          return this.makeToolResult(
-            this.config.selfProtectionMode,
-            "self_protection",
-            BLOCK_REASON_PROTECTED_PATH,
-            "high",
-            { path: candidate, violation },
-          );
-        }
+    // Build defense modes (same as OpenClaw handlers.ts)
+    const toolCallModes: ToolCallDefenseModes = {
+      selfProtection: this.config.selfProtectionMode,
+      commandBlock: this.config.commandBlockMode,
+      encodingGuard: this.config.encodingGuardMode,
+      commandObfuscation: this.mergeDefenseModes(
+        this.config.commandBlockMode,
+        this.config.encodingGuardMode,
+      ),
+      scriptProvenanceGuard: this.config.scriptProvenanceGuardMode,
+      memoryGuard: this.config.memoryGuardMode,
+      loopGuard: this.config.loopGuardMode,
+      exfiltrationGuard: this.config.exfiltrationGuardMode,
+    };
 
-        const deletionViolation = resolveOutsideWorkspaceDeletionViolation(tool, args, candidate);
-        if (deletionViolation) {
-          return this.makeToolResult(
-            this.config.selfProtectionMode,
-            "self_protection",
-            BLOCK_REASON_WORKSPACE_DELETE,
-            "high",
-            { path: candidate },
-          );
-        }
-      }
+    // Check if any strategy is enabled
+    const hasAnyEnabledStrategy = TOOL_CALL_DEFENSE_STRATEGIES.some((strategy) =>
+      this.resolveToolCallDefenseMode(toolCallModes, strategy.modeSource) !== "off",
+    );
+    if (!hasAnyEnabledStrategy) {
+      return { block: false, mode: "off" };
     }
 
-    // --- command block ---
+    const protectedRoots = this.config.selfProtectionMode !== "off"
+      ? this.state.getProtectedRoots()
+      : [];
+    const pathCandidates = resolveProtectedPathCandidates(tool, args, baseDir);
+    const previousToolCalls = runId ? this.state.peekRunToolCalls(runId) : [];
+    const observedSecrets = sessionKey ? this.state.peekObservedSecrets(sessionKey) : [];
+    const runSecurityState = runId ? this.state.peekRunSecurityState(runId) : undefined;
+    const promptSnapshot = sessionKey ? this.state.peekPromptSnapshot(sessionKey) : undefined;
     const commandText = this.readCommandText(args);
-    if (commandText && this.config.commandBlockEnabled) {
-      const highRisk = detectHighRiskCommand(commandText);
-      if (highRisk) {
-        return this.makeToolResult(
-          this.config.commandBlockMode,
-          "command_block",
-          BLOCK_REASON_HIGH_RISK_OPERATION,
-          "critical",
-          { pattern: highRisk },
-        );
+
+    // Build context (same structure as OpenClaw handlers.ts)
+    const toolCallContext: ToolCallDefenseContext = {
+      toolName: tool,
+      params: args,
+      commandText,
+      sessionKey,
+      runId,
+      baseDir,
+      protectedRoots,
+      pathCandidates,
+      previousToolCalls,
+      observedSecrets,
+      runSecurityState,
+      promptSnapshot,
+      protectedSkills: this.config.protectedSkills,
+      protectedPlugins: this.config.protectedPlugins,
+      now: () => Date.now(),
+      modes: toolCallModes,
+      helpers: {
+        resolveSelfProtectionTextViolation,
+        resolveOutsideWorkspaceDeletionViolation,
+        resolveProtectedPathViolation,
+        detectCommandObfuscationViolation,
+        detectHighRiskCommand,
+        resolveInlineExecutionViolation,
+        resolveMemoryGuardViolation,
+        resolveScriptProvenanceViolation,
+        reviewSuspiciousOutboundChain,
+        buildLoopGuardStableArgsKey,
+        isOutboundToolCall,
+      },
+      state: {
+        incrementLoopCounter: (sk, rid, key) =>
+          this.state.incrementLoopCounter(sk, rid, key),
+        noteRunSecuritySignals: (rid, payload) =>
+          this.state.noteRunSecuritySignals(rid, payload),
+        noteRuntimeRisk: (sk, flags) =>
+          this.state.noteRuntimeRisk(sk, flags),
+        noteRunToolCall: (rid, record) =>
+          this.state.noteRunToolCall(rid, record),
+      },
+    };
+
+    // Evaluate strategies (same loop as OpenClaw handlers.ts)
+    for (const strategy of TOOL_CALL_DEFENSE_STRATEGIES) {
+      if (!strategy.appliesTo(toolCallContext)) {
+        continue;
       }
 
-      // --- command obfuscation ---
-      const obfuscation = detectCommandObfuscationViolation(commandText);
-      if (obfuscation) {
-        return this.makeToolResult(
-          this.config.commandBlockMode,
-          "command_obfuscation",
-          BLOCK_REASON_HIGH_RISK_OPERATION,
-          "high",
-          { pattern: obfuscation },
-        );
-      }
-    }
+      const evaluation: ToolCallDefenseEvaluation = strategy.evaluate(toolCallContext);
 
-    // --- encoding guard ---
-    if (commandText && this.config.encodingGuardEnabled) {
-      const inlineViolation = resolveInlineExecutionViolation(commandText);
-      if (inlineViolation) {
-        return this.makeToolResult(
-          this.config.encodingGuardMode,
-          "encoding_guard",
-          BLOCK_REASON_HIGH_RISK_OPERATION,
-          "high",
-          { reason: inlineViolation },
-        );
+      if (evaluation.result === "blocked") {
+        const mode = this.resolveToolCallDefenseMode(toolCallModes, strategy.modeSource);
+        this.emitDefenseEvent({
+          defense: strategy.id,
+          mode,
+          reason: evaluation.reason ?? "unknown",
+          severity: "high",
+          blocked: true,
+          details: evaluation.extra,
+        });
+        return {
+          block: true,
+          mode,
+          defense: strategy.id,
+          reason: evaluation.reason ?? "unknown",
+          severity: "high",
+          details: evaluation.extra ?? {},
+        };
       }
-    }
 
-    // --- memory guard ---
-    if (this.config.memoryGuardEnabled) {
-      const memoryViolation = resolveMemoryGuardViolation(tool, args);
-      if (memoryViolation) {
-        return this.makeToolResult(
-          this.config.memoryGuardMode,
-          "memory_guard",
-          BLOCK_REASON_MEMORY_WRITE,
-          "medium",
-          { reason: memoryViolation },
-        );
-      }
-    }
-
-    // --- script provenance guard ---
-    if (commandText && this.config.scriptProvenanceGuardEnabled) {
-      const runState = this.state.peekRunSecurityState(runId);
-      if (runState) {
-        const provenanceViolation = resolveScriptProvenanceViolation(
-          commandText,
-          runState.scriptArtifacts,
-        );
-        if (provenanceViolation) {
-          return this.makeToolResult(
-            this.config.scriptProvenanceGuardMode,
-            "script_provenance",
-            BLOCK_REASON_HIGH_RISK_OPERATION,
-            "high",
-            { reason: provenanceViolation },
-          );
-        }
-      }
-    }
-
-    // --- loop guard ---
-    if (this.config.loopGuardEnabled) {
-      const stableKey = buildLoopGuardStableArgsKey(tool, args);
-      if (stableKey) {
-        const count = this.state.incrementLoopCounter(sessionKey, runId, stableKey);
-        if (count > LOOP_GUARD_ALLOW_COUNT) {
-          return this.makeToolResult(
-            this.config.loopGuardMode,
-            "loop_guard",
-            BLOCK_REASON_LOOP,
-            "medium",
-            { count, stableKey },
-          );
-        }
-      }
-    }
-
-    // --- exfiltration guard ---
-    if (this.config.exfiltrationGuardEnabled && isOutboundToolCall(tool, args)) {
-      const runState = this.state.peekRunSecurityState(runId);
-      if (runState) {
-        const chainViolation = reviewSuspiciousOutboundChain(runState);
-        if (chainViolation) {
-          return this.makeToolResult(
-            this.config.exfiltrationGuardMode,
-            "exfiltration_guard",
-            BLOCK_REASON_EXFILTRATION_CHAIN,
-            "critical",
-            { signals: chainViolation },
-          );
-        }
+      if (evaluation.result === "observed") {
+        const mode = this.resolveToolCallDefenseMode(toolCallModes, strategy.modeSource);
+        this.emitDefenseEvent({
+          defense: strategy.id,
+          mode,
+          reason: evaluation.reason ?? "unknown",
+          severity: "medium",
+          blocked: false,
+          details: evaluation.extra,
+        });
+        // Continue checking — observe does not block
+        continue;
       }
     }
 
@@ -382,7 +376,7 @@ export class AegisRpcRuntime {
 
     // track script artifacts from write_file/patch
     if (["write_file", "patch", "write", "edit"].includes(tool)) {
-      const artifacts = collectScriptArtifactRecords(tool, args, runId, sessionKey);
+      const artifacts = collectScriptArtifactRecords(tool, args, { runId, sessionKey, timestamp: Date.now() });
       if (artifacts.length > 0) {
         this.state.noteRunScriptArtifacts(runId, { sessionKey, artifacts });
       }
@@ -407,12 +401,30 @@ export class AegisRpcRuntime {
       return { riskFlags: [], suspicious: false };
     }
 
-    const text = collectToolResultScanText(params.result);
-    const outcome = scanToolResultText(text);
+    const message: AgentMessage = { content: params.result };
+    const textResult = collectToolResultScanText(message);
+    const text = typeof textResult === 'string' ? textResult : textResult.text || '';
+    const outcome = scanToolResultText(text, textResult.oversize || false);
     const sessionKey = params.sessionKey ?? "default";
 
     if (outcome.riskFlags.length > 0 || outcome.suspicious) {
       this.state.noteToolResult(sessionKey, outcome);
+
+      // Track encoded risk flags as runtime risks (matches OpenClaw behavior)
+      const encodedRiskFlags = outcome.riskFlags.filter((flag: string) => flag.startsWith("encoded-"));
+      if (encodedRiskFlags.length > 0) {
+        this.state.noteRuntimeRisk(sessionKey, encodedRiskFlags);
+      }
+
+      // Emit defense event for Web UI (matches OpenClaw behavior)
+      this.emitDefenseEvent({
+        defense: "tool_result_scan",
+        mode: "observe",
+        reason: `风险标记: ${outcome.riskFlags.join(", ") || "suspicious"}`,
+        severity: "medium",
+        blocked: false,
+        details: { flags: outcome.riskFlags, suspicious: outcome.suspicious, tool: params.tool },
+      });
     }
 
     // track source signals for exfiltration detection
@@ -471,10 +483,11 @@ export class AegisRpcRuntime {
 
     const sessionKey = params.sessionKey ?? "default";
     const secrets = this.state.peekObservedSecrets(sessionKey);
-    const redacted = sanitizeSensitiveOutputText(params.text, secrets);
+    const options = secrets.length > 0 ? { observedSecrets: secrets } : {};
+    const outcome = sanitizeSensitiveOutputText(params.text, options);
     return {
-      text: redacted,
-      redacted: redacted !== params.text,
+      text: outcome.value,
+      redacted: outcome.changed,
     };
   }
 
@@ -530,13 +543,9 @@ export class AegisRpcRuntime {
     if (!this.config.skillScanEnabled) {
       return { scanned: 0 };
     }
-    let scanned = 0;
-    for (const root of params.roots) {
-      await this.scanService.scanDirectory(root).catch(() => undefined);
-      scanned++;
-    }
+    await this.scanService.scanRoots({ roots: params.roots }).catch(() => undefined);
     await this.state.persistTrustedSkills().catch(() => undefined);
-    return { scanned };
+    return { scanned: params.roots.length };
   }
 
   // -----------------------------------------------------------------------
@@ -609,28 +618,48 @@ export class AegisRpcRuntime {
     return undefined;
   }
 
-  private makeToolResult(
-    mode: DefenseMode,
-    defense: string,
-    reason: string,
-    severity: string,
-    details: Record<string, unknown>,
-  ): CheckBeforeToolResult {
-    const block = mode === "enforce";
-    this.emitDefenseEvent({ defense, mode, reason, severity, blocked: block, details });
-    return { block, mode, defense, reason, severity, details };
+  private mergeDefenseModes(...modes: DefenseMode[]): DefenseMode {
+    if (modes.includes("enforce")) return "enforce";
+    if (modes.includes("observe")) return "observe";
+    return "off";
+  }
+
+  private resolveToolCallDefenseMode(
+    modes: ToolCallDefenseModes,
+    source: ToolCallDefenseModeSource | readonly ToolCallDefenseModeSource[],
+  ): DefenseMode {
+    const sources: readonly ToolCallDefenseModeSource[] = Array.isArray(source) ? source : [source];
+    return this.mergeDefenseModes(...sources.map((entry) => modes[entry]));
   }
 
   private emitDefenseEvent(event: Record<string, unknown>): void {
     const line = JSON.stringify({ ...event, timestamp: Date.now() }) + "\n";
     const filePath = path.join(this.stateDir, DEFENSE_EVENTS_FILENAME);
-    fs.appendFile(filePath, line, "utf8").catch(() => undefined);
+    const dir = this.stateDir;
+    const doWrite = async () => {
+      await fs.mkdir(dir, { recursive: true });
+      await fs.appendFile(filePath, line, "utf8");
+    };
+    doWrite().catch((err) => {
+      this.logger.error(`Failed to write defense event to ${filePath}: ${err}`);
+    });
   }
 
   private createEventWriter(filePath: string) {
+    const dir = path.dirname(filePath);
+    let ensured = false;
     return (event: Record<string, unknown>): void => {
       const line = JSON.stringify({ ...event, timestamp: Date.now() }) + "\n";
-      fs.appendFile(filePath, line, "utf8").catch(() => undefined);
+      const doWrite = async () => {
+        if (!ensured) {
+          await fs.mkdir(dir, { recursive: true });
+          ensured = true;
+        }
+        await fs.appendFile(filePath, line, "utf8");
+      };
+      doWrite().catch((err) => {
+        this.logger.error(`Failed to write defense event to ${filePath}: ${err}`);
+      });
     };
   }
 

@@ -17,29 +17,14 @@ import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from .paths import find_rpc_server
+
 logger = logging.getLogger("claw-aegis.bridge")
 
 # Maximum restarts after unexpected process death
 _MAX_RESTARTS = 3
 # Timeout for a single RPC call (seconds)
 _CALL_TIMEOUT = 5.0
-
-
-def _find_rpc_server() -> str:
-    """Locate the compiled rpc-server.js relative to this file."""
-    # adapters/hermes/bridge.py -> ../../rpc-server.js
-    root = Path(__file__).resolve().parent.parent.parent
-    candidates = [
-        root / "rpc-server.js",
-        root / "dist" / "rpc-server.js",
-    ]
-    for candidate in candidates:
-        if candidate.is_file():
-            return str(candidate)
-    raise FileNotFoundError(
-        f"Cannot find rpc-server.js.  Searched: {[str(c) for c in candidates]}. "
-        f"Run 'npm run build' in {root} first."
-    )
 
 
 def _find_node() -> str:
@@ -83,7 +68,7 @@ class AegisEngine:
         if self._node_bin is None:
             self._node_bin = _find_node()
         if self._rpc_server is None:
-            self._rpc_server = _find_rpc_server()
+            self._rpc_server = find_rpc_server()
 
         logger.info(
             "Starting ClawAegis RPC: %s %s", self._node_bin, self._rpc_server,
