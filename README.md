@@ -1,6 +1,6 @@
 
 
-# ClawAegis
+# AgentAegis
 
 <p align="center"> 
   <a href="README.md">English</a>
@@ -9,7 +9,7 @@
 </p>
 
 
-> ClawAegis builds a multi-dimensional, defense-in-depth runtime security architecture for OpenClaw-style agents, implementing five-layer defense across the full lifecycle of LLM agents in various Claw environments — from initialization to execution — covering security and reliability risks in agent execution services, including skill poisoning, memory contamination, intent misalignment, malicious execution, and resource exhaustion. As a lightweight built-in security plugin, ClawAegis proactively triggers defense mechanisms at critical OpenClaw stages to dynamically safeguard agent runtime security. It also provides configurable risk identification and response policies for security operators to flexibly and extensibly address agent runtime threats, as well as sensitive file and skill asset protection for everyday users to safeguard personal privacy and assets.
+> AgentAegis builds a multi-dimensional, defense-in-depth runtime security architecture for OpenClaw-style agents, implementing five-layer defense across the full lifecycle of LLM agents in various Claw environments — from initialization to execution — covering security and reliability risks in agent execution services, including skill poisoning, memory contamination, intent misalignment, malicious execution, and resource exhaustion. As a lightweight built-in security plugin, AgentAegis proactively triggers defense mechanisms at critical OpenClaw stages to dynamically safeguard agent runtime security. It also provides configurable risk identification and response policies for security operators to flexibly and extensibly address agent runtime threats, as well as sensitive file and skill asset protection for everyday users to safeguard personal privacy and assets.
 > 
 
 
@@ -19,10 +19,10 @@
 ## 💫 Architecture
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/b44e3807-4b4b-4dc8-a6ac-c6b8d24501a2" alt="ClawAegis Architecture" width="100%" />
+  <img src="https://github.com/user-attachments/assets/b44e3807-4b4b-4dc8-a6ac-c6b8d24501a2" alt="AgentAegis Architecture" width="100%" />
 </p>
 
-ClawAegis builds a multi-dimensional, defense-in-depth architecture for OpenClaw, forming a complete security closed loop across the full lifecycle from initialization to execution. The system consists of five core defense layers:
+AgentAegis builds a multi-dimensional, defense-in-depth architecture for OpenClaw, forming a complete security closed loop across the full lifecycle from initialization to execution. The system consists of five core defense layers:
 
 - **Foundation Scan Layer** — Ensures the trustworthiness of the underlying environment, establishing a solid security foundation from the initialization stage.
 - **Perception Input Layer** — Strictly filters and audits both internal and external instructions, intercepting malicious injections and high-risk requests.
@@ -30,25 +30,25 @@ ClawAegis builds a multi-dimensional, defense-in-depth architecture for OpenClaw
 - **Decision Alignment Layer** — Validates intent during the logic generation phase to ensure output decisions align with the user's true intent. Ambiguous instructions require secondary user confirmation to eliminate intent deviation risks.
 - **Execution Control Layer** — Enforces permission management before final operations, ensuring all instructions execute within controlled security boundaries.
 
-Through this layered, progressive mechanism, ClawAegis ensures that OpenClaw possesses fine-grained risk mitigation capabilities at every critical link in the chain, neutralizing potential threats before they materialize. Furthermore, as a built-in security plugin — unlike passive defense mechanisms such as prompt-based or skill-based defenses — ClawAegis can proactively trigger defense mechanisms at critical OpenClaw stages, dynamically safeguarding runtime security.
+Through this layered, progressive mechanism, AgentAegis ensures that OpenClaw possesses fine-grained risk mitigation capabilities at every critical link in the chain, neutralizing potential threats before they materialize. Furthermore, as a built-in security plugin — unlike passive defense mechanisms such as prompt-based or skill-based defenses — AgentAegis can proactively trigger defense mechanisms at critical OpenClaw stages, dynamically safeguarding runtime security.
 
 ---
 
 ## 🚀 Quick Start
 
-**1.** Clone ClawAegis:
+**1.** Clone AgentAegis:
 
 ```bash
-git clone https://github.com/antgroup/ClawAegis.git
+git clone https://github.com/antgroup/agent-aegis
 ```
 
 **2.** Install the plugin:
 
 ```bash
-openclaw plugins install ./ClawAegis
+openclaw plugins install ./agent-aegis
 ```
 
-**3.** (Optional) Enable ClawAegis with observe mode for safe rollout:
+**3.** (Optional) Enable AgentAegis with observe mode for safe rollout:
 
 ```json
 {
@@ -76,7 +76,7 @@ openclaw plugins install ./ClawAegis
 
 ### Runtime Defense
 
-ClawAegis provides a set of built-in runtime defenses that cover the full agent lifecycle. These defenses detect and mitigate threats automatically without requiring additional configuration.
+AgentAegis provides a set of built-in runtime defenses that cover the full agent lifecycle. These defenses detect and mitigate threats automatically without requiring additional configuration.
 
 - **Five-Layer Defense-in-Depth** — Covers intent scanning, tool call governance, tool result inspection, asset protection, and output safeguarding across nine OpenClaw lifecycle hooks.
 - **Skill Poisoning Defense** — Scans skill content at startup and continuously, detecting malicious payloads that attempt to bypass approval, disable safety controls, or tamper with protected assets.
@@ -88,7 +88,7 @@ ClawAegis provides a set of built-in runtime defenses that cover the full agent 
 
 ### Advanced Configurable Defense
 
-Beyond the built-in runtime defenses, ClawAegis gives security operators and end users a configurable control surface for advanced risk management and asset protection.
+Beyond the built-in runtime defenses, AgentAegis gives security operators and end users a configurable control surface for advanced risk management and asset protection.
 
 - **Configurable Security Operations** — Operators can enable all defenses globally with `allDefensesEnabled`, set a fleet-wide baseline with `defaultBlockingMode`, and override individual controls such as `selfProtectionMode`, `commandBlockMode`, `memoryGuardMode`, and `exfiltrationGuardMode`. Each defense supports `enforce`, `observe`, and `off` modes, enabling staged rollout from monitoring to active blocking. Operators can also define `protectedPaths`, `protectedSkills`, and `protectedPlugins` to match the assets that matter in their environment, and use `startupSkillScan` to identify risky skills early. Detections are surfaced as runtime observations, blocked actions, and promoted prompt warnings, giving defenders actionable signals for triage and response.
 - **Sensitive Files and Skill Asset Protection** — Sensitive files and directories can be added to `protectedPaths` to block or observe unauthorized reads, writes, deletes, and tampering. High-value skills and important plugins can be registered via `protectedSkills` and `protectedPlugins` to prevent deletion, overwrite, or patch-based mutation of skill and plugin assets. Self-protection reduces the chance that the agent disables its own defenses or silently rewrites security configuration. For personal users, this means safer handling of private notes, documents, and custom skills; for organizations, it means stronger protection for operational runbooks, audit plugins, and security-critical configuration.
@@ -98,11 +98,11 @@ Beyond the built-in runtime defenses, ClawAegis gives security operators and end
 ## 🛠️ Project Structure
 
 ```
-ClawAegis/
+AgentAegis/
 ├── index.ts                    # Plugin entry point; registers lifecycle hooks
 ├── runtime-api.ts              # Type definitions for OpenClaw plugin API
 ├── openclaw.plugin.json        # Plugin manifest with config schema and UI hints
-├── package.json                # Package metadata (@openclaw/claw-aegis)
+├── package.json                # Package metadata (@openclaw/agent-aegis)
 ├── tsconfig.json               # TypeScript configuration
 ├── LEGAL.md                    # Legal disclaimer
 └── src/
@@ -133,7 +133,7 @@ ClawAegis/
 
 ## 🖥️ WebUI
 
-ClawAegis includes a standalone Web management panel for visually configuring defense policies, viewing security status, browsing event logs, and managing Skill scans.
+AgentAegis includes a standalone Web management panel for visually configuring defense policies, viewing security status, browsing event logs, and managing Skill scans.
 
 ### Quick Start
 
@@ -141,10 +141,10 @@ After installing the plugin, navigate to the plugin directory and start the WebU
 
 ```bash
 # macOS / Linux
-cd ~/.openclaw/extensions/claw-aegis/web
+cd ~/.openclaw/extensions/agent-aegis/web
 
 # Windows
-cd %USERPROFILE%\.openclaw\extensions\claw-aegis\web
+cd %USERPROFILE%\.openclaw\extensions\agent-aegis\web
 ```
 
 ```bash
@@ -189,7 +189,7 @@ npm run dev
 
 ### Configuration Parameters
 
-ClawAegis defense parameters are stored in `openclaw.plugin.json` under the `userConfig` field. You can modify them in two ways:
+AgentAegis defense parameters are stored in `openclaw.plugin.json` under the `userConfig` field. You can modify them in two ways:
 
 **Method 1: Via WebUI (Recommended)**
 
@@ -256,7 +256,7 @@ Edit `openclaw.plugin.json` directly and add or modify the `userConfig` field:
 
 ## 🎬 Visualization
 
-OpenClaw can be deployed locally by individual users or remotely by service providers — both scenarios introduce distinct security risks. The demos below illustrate how ClawAegis defends against real-world threats in each context.
+OpenClaw can be deployed locally by individual users or remotely by service providers — both scenarios introduce distinct security risks. The demos below illustrate how AgentAegis defends against real-world threats in each context.
 
 ### For Individual Users (To C)
 

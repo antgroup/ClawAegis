@@ -13,3 +13,5 @@ web/shared/tsconfig.tsbuildinfo
 # OS
 .DS_Store
 Thumbs.db
+
+CHANGELOG*.md
